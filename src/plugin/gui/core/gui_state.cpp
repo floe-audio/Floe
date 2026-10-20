@@ -309,8 +309,6 @@ static void DoResizeCorner(GuiState& g) {
                 .tooltip_footer = "Drag to resize."_s,
                 .placement = TooltipPlacement::AboveThenBelow,
             });
-
-    imgui.RegisterNamedRect("resize-corner"_s, r);
 }
 
 void GuiUpdate(GuiState& g) {

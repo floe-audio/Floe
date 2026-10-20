@@ -47,6 +47,7 @@ static void DoDotsMenu(GuiState& g) {
                                     .contents_direction = layout::Direction::Column,
                                     .contents_align = layout::Alignment::Start,
                                 },
+                                .name = "main-menu"_s,
                             });
 
     // State
@@ -544,6 +545,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                   .layout {
                       .size = scale_size_to_fit_height(logo_image->size.ToFloat2(), root_size.y * 0.5f),
                   },
+                  .name = "top-panel.logo"_s,
               });
 
     DoBox(builder,
@@ -557,6 +559,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                       : ""_s),
               .size_from_text = true,
               .text_colours = Col {.c = Col::Subtext0, .dark_mode = true},
+              .name = "top-panel.version"_s,
           });
 
     {
@@ -586,6 +589,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                                   .layout {
                                                       .size = layout::k_hug_contents,
                                                   },
+                                                  .name = "top-panel.buttons"_s,
                                               });
     DoExperimentalModeIndicatorIfNeeded(builder, right_icon_buttons_container, g.prefs);
 
@@ -700,6 +704,8 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
 
         auto const popup_id = builder.imgui.MakeId("DotsMenu");
         if (dots_button.button_fired) builder.imgui.OpenPopupMenu(popup_id, dots_button.imgui_id);
+        if (IsScreenshotRequest("main-menu"_s) && !builder.imgui.IsPopupMenuOpen(popup_id))
+            builder.imgui.OpenPopupMenu(popup_id, dots_button.imgui_id);
 
         if (builder.imgui.IsPopupMenuOpen(popup_id))
             DoBoxViewport(builder,
@@ -724,6 +730,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                               .contents_gap = 15,
                                               .contents_direction = layout::Direction::Row,
                                           },
+                                          .name = "top-panel.master-knobs"_s,
                                       });
 
     {
@@ -777,6 +784,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
                                          .contents_direction = layout::Direction::Row,
                                          .contents_align = layout::Alignment::Start,
                                      },
+                                     .name = "top-panel.meters"_s,
                                  });
 
     // peak meter
@@ -815,8 +823,9 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
     }
 
     // loudness meter
-    if (prefs::GetBool(g.engine.shared_engine_systems.prefs,
-                       SettingDescriptor(GuiPreference::ShowLufsMeter))) {
+    // Doc screenshots show the default layout, regardless of the local preference.
+    if (!IsAnyScreenshotInProgress() && prefs::GetBool(g.engine.shared_engine_systems.prefs,
+                                                       SettingDescriptor(GuiPreference::ShowLufsMeter))) {
         constexpr f32 k_loudness_target_lufs = -22.0f;
         constexpr f32 k_loudness_target_tolerance_lu = 1.0f;
         constexpr f32 k_loudness_readout_width = 40;

@@ -507,19 +507,36 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
     auto const& libs = context.frame_context.libraries;
 
     if (is_browser_screenshot || is_browser_menu_screenshot) {
-        // Add a tag filter so the screenshot is more interesting than an empty browser. The browser-menu
+        // Select filters so the screenshot is more interesting than an empty browser. They come from the
+        // loaded Instrument so they suit whichever library the screenshot preset uses, and the results are
+        // never empty. The Filter-mode screenshot shows a tag and a library combining; the browser-menu
         // screenshot captures the match menu, which needs 2 or more selected filters to exist.
-        auto& tag_filter = state.common_state.Filter(BrowserFilter::Tags);
-        if (!tag_filter.Contains((u64)TagType::Ambient)) tag_filter.Add((u64)TagType::Ambient, "ambient"_s);
-        if (is_browser_menu_screenshot && !tag_filter.Contains((u64)TagType::Warm))
-            tag_filter.Add((u64)TagType::Warm, "warm"_s);
-        // A library too, so the Filter-mode screenshot shows filters combining.
-        if (is_browser_screenshot) {
-            auto& library_filter = state.common_state.Filter(BrowserFilter::Library);
-            for (auto const l : libs) {
-                if (l->name != "Lost Reveries"_s) continue;
-                if (!library_filter.Contains(l->id)) library_filter.Add(l->id, l->name);
-                break;
+        auto const loaded_inst = ({
+            sample_lib::Instrument const* inst = nullptr;
+            if (auto const id = context.layer.instrument_id.TryGetFromTag<InstrumentType::Sampler>())
+                if (auto const lib = context.frame_context.lib_table.Find(id->library))
+                    if (auto const found = (*lib)->insts_by_id.Find((String)id->inst_id)) inst = *found;
+            inst;
+        });
+        if (loaded_inst) {
+            usize const num_filters = 2;
+            auto const max_tags = is_browser_screenshot ? num_filters - 1 : num_filters;
+            DynamicArrayBounded<TagType, num_filters> tags;
+            for (auto const preferred : Array {TagType::Ambient, TagType::Warm})
+                if (tags.size != max_tags && loaded_inst->tags.Get(ToInt(preferred)))
+                    dyn::Append(tags, preferred);
+            loaded_inst->tags.ForEachSetBit([&](usize bit) {
+                if (tags.size != max_tags && !Contains(tags, (TagType)bit)) dyn::Append(tags, (TagType)bit);
+            });
+
+            auto& tag_filter = state.common_state.Filter(BrowserFilter::Tags);
+            for (auto const tag : tags)
+                if (!tag_filter.Contains((u64)tag)) tag_filter.Add((u64)tag, GetTagInfo(tag).name);
+
+            if (tags.size != num_filters) {
+                auto const& lib = loaded_inst->library;
+                auto& library_filter = state.common_state.Filter(BrowserFilter::Library);
+                if (!library_filter.Contains(lib.id)) library_filter.Add(lib.id, lib.name);
             }
         }
     }
@@ -765,7 +782,6 @@ void DoInstBrowserPopup(GuiBuilder& builder, InstBrowserContext& context, InstBr
                     .error_notifications = context.engine.error_notifications,
                     .notifications = context.notifications,
                     .confirmation_dialog_state = context.confirmation_dialog_state,
-                    .collection_name_prefix = is_browser_screenshot ? "browser.library."_s : ""_s,
                 };
                 f;
             }),

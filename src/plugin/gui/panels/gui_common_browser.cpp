@@ -2066,8 +2066,10 @@ void ApplyBrowserSettings(CommonBrowserState& state,
                    ({
                        BrowserMode mode;
                        if (IsAnyScreenshotInProgress())
-                           mode = IsScreenshotRequest("browser-browse"_s) ? BrowserMode::Browse
-                                                                          : BrowserMode::Filter;
+                           mode = (IsScreenshotRequest("browser-browse"_s) ||
+                                   IsScreenshotRequest("preset-browser"_s))
+                                      ? BrowserMode::Browse
+                                      : BrowserMode::Filter;
                        else
                            mode = (BrowserMode)prefs::GetInt(preferences, BrowserModePrefsDescriptor());
                        mode;
@@ -2488,10 +2490,7 @@ static void DoFilterModeCollection(GuiBuilder& builder,
     if (options.store) LoadCollapseStateFromStore(*options.store, collection_toggled_ids, collapse_id);
     bool collapsed = Contains(collection_toggled_ids, collapse_id) != options.default_collapsed;
 
-    // For certain screenshots, force a collection to be expanded.
-    if (collapsed && options.name == "browser.library.Lost Reveries"_s &&
-        IsScreenshotRequest("browser-full"_s))
-        collapsed = false;
+    if (collapsed && is_selected && IsScreenshotRequest("browser-full"_s)) collapsed = false;
 
     auto const collection = DoBox(builder,
                                   {
@@ -3091,12 +3090,6 @@ static void DoLibraryCollections(GuiBuilder& builder,
                     .default_collapsed = true,
                     .right_click_menu = LibraryRightClickMenu(lib_hash),
                     .store = &context.store,
-                    .name = library_filters.collection_name_prefix.size
-                                ? (String)fmt::Format(builder.arena,
-                                                      "{}{}",
-                                                      library_filters.collection_name_prefix,
-                                                      lib->name)
-                                : String {},
                 });
             return LoopControl::Continue;
         });

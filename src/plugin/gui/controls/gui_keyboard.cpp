@@ -788,6 +788,7 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves,
     auto& imgui = g.imgui;
 
     auto const abs_r = imgui.RegisterAndConvertRect(r);
+    imgui.RegisterNamedRect("keyboard.key-range-bars"_s, abs_r);
 
     auto const id = imgui.MakeId("keyboard-top-display"_s);
     auto const popup_id = imgui.MakeId("keyboard-top-display-popup"_s);
@@ -927,6 +928,7 @@ Optional<KeyboardGuiKeyPressed> KeyboardGui(GuiState& g, Rect r, s32 starting_oc
     }
 
     rect_cut::CutTop(r, WwToPixels(4.0f));
+    g.imgui.RegisterNamedRect("keyboard.keys"_s, g.imgui.ViewportRectToWindowRect(r));
 
     return InternalKeyboardGui(g, r, starting_octave, num_octaves);
 }

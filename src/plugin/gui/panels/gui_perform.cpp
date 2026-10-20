@@ -58,6 +58,7 @@ static void DoPresetInfo(GuiBuilder& builder, GuiState& g, GuiFrameContext const
                                          .contents_align = layout::Alignment::Start,
                                          .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                      },
+                                     .name = "perform.preset-info"_s,
                                  });
 
     // Library name
@@ -298,6 +299,7 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                           .contents_align = layout::Alignment::Start,
                                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                       },
+                                      .name = "perform.layers"_s,
                                   });
 
     for (auto const layer_index : Range<u8>(k_num_layers)) {
@@ -746,6 +748,7 @@ static void DoLayersColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                                .contents_align = layout::Alignment::Start,
                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                            },
+                                           .name = "perform.compare"_s,
                                        });
 
     DoSectionLabel(builder, compare_section, "COMPARE"_s);
@@ -770,6 +773,7 @@ static void DoMacrosColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                                       .contents_align = layout::Alignment::Start,
                                       .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                   },
+                                  .name = "perform.macros"_s,
                               });
 
     DoSectionLabel(builder, column, "MACROS"_s);
@@ -874,6 +878,7 @@ static void DoDescriptionColumn(GuiBuilder& builder, GuiState& g, Box parent) {
                 }
                 return ""_s;
             }(),
+            .name = "perform.description"_s,
         });
 
 #undef WRITE_DESCRIPTION_TOOLTIP_NOTE
@@ -1012,6 +1017,11 @@ void MidPanelPerformContent(GuiBuilder& builder,
             1);
         if (next_btn.button_fired) load_adjacent(SearchDirection::Forward);
 
+        if (auto const r = BoxRect(builder, prev_btn))
+            g.imgui.RegisterNamedRect("perform.prev-preset"_s, g.imgui.ViewportRectToWindowRect(*r));
+        if (auto const r = BoxRect(builder, next_btn))
+            g.imgui.RegisterNamedRect("perform.next-preset"_s, g.imgui.ViewportRectToWindowRect(*r));
+
         if (prev_btn.is_hot || next_btn.is_hot)
             StartScanningIfNeeded(g.engine.shared_engine_systems.preset_server);
     }
@@ -1029,6 +1039,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
                                          .contents_padding = {.lr = 8, .tb = 4},
                                      },
                                      .tooltip = "The folder that this preset lives in."_s,
+                                     .name = "perform.folder-badge"_s,
                                  });
         if (auto const r = BoxRect(builder, badge))
             DrawMidBlurredPanelSurface(g,
@@ -1076,6 +1087,8 @@ void MidPanelPerformContent(GuiBuilder& builder,
                 .button_behaviour = imgui::ButtonConfig {},
             });
 
+        // The screenshot shows the hover-only icon so the docs can point at it.
+        auto const show_icon = collapsed || IsScreenshotRequest("perform"_s);
         DoBox(builder,
               {
                   .parent = toggle_bar,
@@ -1085,7 +1098,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
                   .font_size = k_font_icons_size * 0.9f,
                   .text_colours =
                       ColSet {
-                          .base = Col {.c = Col::White, .alpha = (u8)(collapsed ? 160 : 0)},
+                          .base = Col {.c = Col::White, .alpha = (u8)(show_icon ? 160 : 0)},
                           .hot = Col {.c = Col::White, .alpha = (u8)(collapsed ? 220 : 180)},
                           .active = Col {.c = Col::White, .alpha = 220},
                       },
@@ -1093,6 +1106,7 @@ void MidPanelPerformContent(GuiBuilder& builder,
                   .layout {
                       .margins = {.b = 4},
                   },
+                  .name = "perform.collapse-icon"_s,
               });
 
         if (toggle_bar.button_fired)

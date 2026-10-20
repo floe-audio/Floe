@@ -1,0 +1,41 @@
+/* SPDX-FileCopyrightText: 2026 Sam Windell */
+/* SPDX-License-Identifier: MIT */
+
+.generated-screenshot {
+    position: relative;
+    max-width: 100%;
+    height: auto;
+}
+
+.generated-screenshot img {
+    position: absolute;
+    display: block;
+    max-width: none;
+}
+
+.generated-screenshot svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+}
+
+.generated-screenshot-line {
+    fill: none;
+    stroke: #e03c3c;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+.generated-screenshot-badge {
+    fill: #e03c3c;
+}
+
+.generated-screenshot-number {
+    fill: white;
+    font-weight: bold;
+    text-anchor: middle;
+    dominant-baseline: central;
+}

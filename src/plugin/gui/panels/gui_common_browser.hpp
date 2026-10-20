@@ -648,7 +648,6 @@ struct LibraryFilters {
     ThreadsafeErrorNotifications& error_notifications;
     Notifications& notifications;
     ConfirmationDialogState& confirmation_dialog_state;
-    String collection_name_prefix {};
 };
 
 // Browse mode: a group of collections. The root lists it as a row, and opening that row gives the section

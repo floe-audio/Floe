@@ -483,6 +483,7 @@ enum class StandaloneError : u8 {
     PluginInterfaceError,
     WindowError,
     RenderFileError,
+    ScreenshotTimeout,
 };
 ErrorCodeCategory const standalone_error_category {
     .category_id = "STND",
@@ -493,6 +494,7 @@ ErrorCodeCategory const standalone_error_category {
             case StandaloneError::PluginInterfaceError: str = "plugin interface error"; break;
             case StandaloneError::WindowError: str = "window error"; break;
             case StandaloneError::RenderFileError: str = "failed to write render file"; break;
+            case StandaloneError::ScreenshotTimeout: str = "screenshot timed out"; break;
         }
         return writer.WriteChars(str);
     },
@@ -1151,11 +1153,14 @@ RunOfflineRender(Standalone& standalone, RunOptions const& run_options, ArenaAll
 }
 
 static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
+    auto const start_time = TimePoint::Now();
     auto const& dso_path = options.dso_path;
     Standalone standalone {};
     standalone.headless = options.headless || options.offline_render;
     standalone.devices.midi.force_channel_zero = options.force_midi_channel_zero;
-    standalone.devices.midi.skip_device_input = options.midi_stdin;
+    // Screenshots skip it too, so a MIDI device missing from the preferences can't put an error over them.
+    standalone.devices.midi.skip_device_input = options.midi_stdin || options.screenshot_region.HasValue();
+    standalone.devices.audio.use_null_backend = options.screenshot_region.HasValue();
     standalone.devices.host_callbacks = {
         .ctx = &standalone,
         .render = RenderAudio,
@@ -1284,6 +1289,15 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
                 inst->plugin->on_main_thread(inst->plugin);
 
             if (options.screenshot_region) {
+                // Every screenshot should be ready within a few seconds; one that isn't is likely waiting on
+                // a condition that will never be met.
+                if ((TimePoint::Now() - start_time) > 10.0) {
+                    LogError(ModuleName::Standalone,
+                             "Screenshot of region '{}' wasn't captured within 10 seconds",
+                             *options.screenshot_region);
+                    return ErrorCode {StandaloneError::ScreenshotTimeout};
+                }
+
                 auto const floe_ext =
                     (FloeClapExtension const*)inst->plugin->get_extension(inst->plugin,
                                                                           k_floe_clap_extension_id);

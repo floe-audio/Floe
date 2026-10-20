@@ -254,7 +254,19 @@ SavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, SavePreset
             dyn::AssignFitInCapacity(state.metadata.description, description_field.result->text);
     }
 
-    DoTagsGui(builder, state.metadata.tags, root);
+    auto const tags_container = DoBox(builder,
+                                      {
+                                          .parent = root,
+                                          .layout {
+                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                              .contents_gap = k_default_spacing,
+                                              .contents_direction = layout::Direction::Column,
+                                              .contents_align = layout::Alignment::Start,
+                                              .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                          },
+                                          .name = "save-preset.tags"_s,
+                                      });
+    DoTagsGui(builder, state.metadata.tags, tags_container);
 }
 
 constexpr u32 k_save_panel_contents_imgui_id = (u32)SourceLocationHash();
@@ -303,6 +315,7 @@ void DoSavePresetPanel(GuiBuilder& builder, SavePresetPanelContext& context, Sav
                                                 .layout {
                                                     .size = {layout::k_fill_parent, layout::k_fill_parent},
                                                 },
+                                                .name = "save-preset.contents"_s,
                                             }),
                             .imgui_id = k_save_panel_contents_imgui_id,
                             .viewport_config = k_default_modal_subviewport,

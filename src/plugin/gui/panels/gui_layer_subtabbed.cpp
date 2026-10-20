@@ -33,6 +33,31 @@ constexpr f32 k_page_row_gap_x = 7;
 constexpr f32 k_knob_width = 36;
 constexpr f32 k_section_toggle_extra_clickable_width = 20;
 
+// Screenshots capture layer 0 only.
+static void RegisterLayerNamedRect(GuiState& g, u8 layer_index, String name, Box box) {
+    if (layer_index != 0) return;
+    if (auto const r = BoxRect(g.builder, box))
+        g.imgui.RegisterNamedRect(name, g.imgui.ViewportRectToWindowRect(*r));
+}
+
+// Screenshots of layer 0's PLAYBACK tab in Granular Fixed mode.
+static bool IsGranularScreenshotRequest() {
+    for (auto const region : Array {"layer-playback-granular-fixed"_s,
+                                    "granular-controls"_s,
+                                    "granular-random"_s,
+                                    "granular-harmony"_s,
+                                    "granular-variation"_s})
+        if (IsScreenshotRequest(region)) return true;
+    return false;
+}
+
+static bool IsArpSectionScreenshotRequest() {
+    for (auto const region :
+         Array {"arp-step-settings"_s, "arp-sequence"_s, "arp-config"_s, "arp-fixed-notes"_s, "arp-sliced"_s})
+        if (IsScreenshotRequest(region)) return true;
+    return false;
+}
+
 static void DoTabRightClickMenu(GuiState& g,
                                 Box tab_button,
                                 u8 layer_index,
@@ -41,7 +66,24 @@ static void DoTabRightClickMenu(GuiState& g,
                                 u64 id_extra) {
     auto const right_click_id = SourceLocationHash() + id_extra;
 
-    DoRightClickMenu(g, tab_button, right_click_id, [&](Box root) {
+    if (layer_index == 0 && tab_module == ParameterModule::Main && IsScreenshotRequest("layer-tab-menu"_s) &&
+        !g.imgui.IsPopupMenuOpen(right_click_id))
+        g.imgui.OpenPopupMenu(right_click_id, tab_button.imgui_id);
+
+    DoRightClickMenu(g, tab_button, right_click_id, [&](Box popup_root) {
+        // A named wrapper so screenshots can find the menu.
+        auto const root =
+            DoBox(g.builder,
+                  {
+                      .parent = popup_root,
+                      .layout {
+                          .size = layout::k_hug_contents,
+                          .contents_direction = layout::Direction::Column,
+                          .contents_align = layout::Alignment::Start,
+                      },
+                      .name = layer_index == 0 && tab_module == ParameterModule::Main ? "layer-tab-menu"_s
+                                                                                      : String {},
+                  });
         StateSnapshotSection const target {ModuleTabSection {LayerModuleFromIndex(layer_index), tab_module}};
 
         if (MenuItem(g.builder,
@@ -93,6 +135,9 @@ static void DoLoopModeSelector(GuiState& g, Box parent, LayerProcessor& layer) {
         (String)fmt::Format(g.scratch_arena, "Default: {}", default_loop_behaviour.value.name);
 
     auto const row = DoMidPanelPrevNextRow(g.builder, parent, layout::k_fill_parent);
+    if (layer.index == 0)
+        if (auto const r = BoxRect(g.builder, row))
+            g.imgui.RegisterNamedRect("playback.loop-selector"_s, g.imgui.ViewportRectToWindowRect(*r));
 
     Optional<f32> new_val {};
 
@@ -559,6 +604,7 @@ void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
                                  },
                              });
 
+    Optional<Rect> text_bounds {};
     for (auto const i : Range(segments.size)) {
         if (i > 0) {
             auto const dot = DoBox(g.builder,
@@ -575,17 +621,24 @@ void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
             }
         }
 
-        DoBox(g.builder,
-              {
-                  .parent = strip,
-                  .id_extra = i,
-                  .text = segments[i],
-                  .size_from_text = true,
-                  .font = FontType::Heading3,
-                  .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
-                  .text_justification = TextJustification::CentredLeft,
-              });
+        auto const text = DoBox(g.builder,
+                                {
+                                    .parent = strip,
+                                    .id_extra = i,
+                                    .text = segments[i],
+                                    .size_from_text = true,
+                                    .font = FontType::Heading3,
+                                    .text_colours = LiveColStruct(UiColMap::MidTextDimmed),
+                                    .text_justification = TextJustification::CentredLeft,
+                                });
+        if (auto const r = BoxRect(g.builder, text)) {
+            auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+            text_bounds = text_bounds ? Rect::FromMinMax(::Min(text_bounds->Min(), window_r.Min()),
+                                                         ::Max(text_bounds->Max(), window_r.Max()))
+                                      : window_r;
+        }
     }
+    if (layer_index == 0 && text_bounds) g.imgui.RegisterNamedRect("playback.sample-info"_s, *text_bounds);
 }
 
 static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
@@ -623,6 +676,7 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                                            .contents_direction = layout::Direction::Row,
                                            .contents_align = layout::Alignment::Start,
                                        },
+                                       .name = layer_index == 0 ? "layer-top.volume"_s : String {},
                                    });
 
         // Peak meter
@@ -690,6 +744,7 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                                            .contents_align = layout::Alignment::Middle,
                                            .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                        },
+                                       .name = layer_index == 0 ? "layer-top.pan-stereo"_s : String {},
                                    });
 
         DoKnobParameter(g,
@@ -723,6 +778,7 @@ static void DoMixerRow(GuiState& g, u8 layer_index, Box root) {
                                              .contents_align = layout::Alignment::Middle,
                                              .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                          },
+                                         .name = layer_index == 0 ? "layer-top.tuning"_s : String {},
                                      });
 
         DoKnobParameter(g,
@@ -901,10 +957,14 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                 },
                             });
 
-    DoButtonParameter(g,
-                      page,
-                      params.DescribedValue(layer_index, LayerParamIndex::FilterOn),
-                      {.extra_clickable_width = k_section_toggle_extra_clickable_width});
+    RegisterLayerNamedRect(
+        g,
+        layer_index,
+        "main.filter-on"_s,
+        DoButtonParameter(g,
+                          page,
+                          params.DescribedValue(layer_index, LayerParamIndex::FilterOn),
+                          {.extra_clickable_width = k_section_toggle_extra_clickable_width}));
 
     DoWhitespace(g.builder, page, 8);
 
@@ -916,6 +976,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                        .layout {
                                            .size = {layout::k_fill_parent, 80},
                                        },
+                                       .name = layer_index == 0 ? "main.filter-graph"_s : String {},
                                    });
         if (auto const r = BoxRect(g.builder, vis_box)) DoFilterGraph(g, layer_index, *r, greyed_out);
     }
@@ -946,6 +1007,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                                 .contents_align = layout::Alignment::Start,
                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                             },
+                                            .name = layer_index == 0 ? "main.filter-controls"_s : String {},
                                         });
 
         DoMenuParameter(g,
@@ -1010,6 +1072,7 @@ static void DoFilterPage(GuiState& g, u8 layer_index, Box parent) {
                                             .layout {
                                                 .size = {layout::k_fill_parent, 60},
                                             },
+                                            .name = layer_index == 0 ? "main.filter-envelope"_s : String {},
                                         });
 
         bool const env_greyed_out =
@@ -1045,10 +1108,14 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                             });
 
     // EqOn heading
-    DoButtonParameter(g,
-                      page,
-                      params.DescribedValue(layer_index, LayerParamIndex::EqOn),
-                      {.extra_clickable_width = k_section_toggle_extra_clickable_width});
+    RegisterLayerNamedRect(
+        g,
+        layer_index,
+        "eq.on"_s,
+        DoButtonParameter(g,
+                          page,
+                          params.DescribedValue(layer_index, LayerParamIndex::EqOn),
+                          {.extra_clickable_width = k_section_toggle_extra_clickable_width}));
 
     DoWhitespace(g.builder, page, 8);
 
@@ -1060,6 +1127,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                        .layout {
                                            .size = {layout::k_fill_parent, 140},
                                        },
+                                       .name = layer_index == 0 ? "eq.graph"_s : String {},
                                    });
         if (auto const r = BoxRect(g.builder, vis_box)) DoEqGraph(g, layer_index, *r, greyed_out);
     }
@@ -1076,6 +1144,7 @@ static void DoEqPage(GuiState& g, u8 layer_index, Box parent) {
                                                .contents_direction = layout::Direction::Column,
                                                .contents_align = layout::Alignment::Start,
                                            },
+                                           .name = layer_index == 0 ? "eq.bands"_s : String {},
                                        });
 
     auto const do_eq_band_row = [&](LayerParamIndex type_param,
@@ -1182,7 +1251,7 @@ struct VariationButtonOptions {
     bool greyed_out;
 };
 
-static void DoVariationButton(GuiState& g, u8 layer_index, Box row, VariationButtonOptions const& options) {
+static Box DoVariationButton(GuiState& g, u8 layer_index, Box row, VariationButtonOptions const& options) {
     auto& params = g.engine.processor.main_params;
     auto const variation_mode =
         params.IntValue<param_values::VariationMode>(layer_index, options.variation_mode_param);
@@ -1204,6 +1273,12 @@ static void DoVariationButton(GuiState& g, u8 layer_index, Box row, VariationBut
                                       (u64)ToInt(options.variation_mode_param));
     if (btn.button_fired) g.imgui.OpenPopupMenu(popup_id, btn.imgui_id);
 
+    auto const is_screenshot_subject =
+        layer_index == 0 && options.variation_mode_param == LayerParamIndex::GranularVariationMode &&
+        IsScreenshotRequest("granular-variation"_s);
+    if (is_screenshot_subject && !g.imgui.IsPopupMenuOpen(popup_id))
+        g.imgui.OpenPopupMenu(popup_id, btn.imgui_id);
+
     // bounds is a Box so the run lambda is deferred: locals must be captured by value.
     if (g.imgui.IsPopupMenuOpen(popup_id)) {
         DoBoxViewport(
@@ -1212,6 +1287,7 @@ static void DoVariationButton(GuiState& g, u8 layer_index, Box row, VariationBut
                 .run =
                     [&g,
                      layer_index,
+                     is_screenshot_subject,
                      variation_mode_param_index = options.variation_mode_param,
                      seed_param_index = options.seed_param](GuiBuilder&) {
                         auto& params = g.engine.processor.main_params;
@@ -1219,16 +1295,18 @@ static void DoVariationButton(GuiState& g, u8 layer_index, Box row, VariationBut
                             params.DescribedValue(layer_index, variation_mode_param_index);
                         auto const seed_param = params.DescribedValue(layer_index, seed_param_index);
 
-                        auto const root = DoBox(g.builder,
-                                                {
-                                                    .layout {
-                                                        .size = layout::k_hug_contents,
-                                                        .contents_padding = {.lr = 8, .tb = 6},
-                                                        .contents_gap = 6,
-                                                        .contents_direction = layout::Direction::Column,
-                                                        .contents_align = layout::Alignment::Start,
-                                                    },
-                                                });
+                        auto const root =
+                            DoBox(g.builder,
+                                  {
+                                      .layout {
+                                          .size = layout::k_hug_contents,
+                                          .contents_padding = {.lr = 8, .tb = 6},
+                                          .contents_gap = 6,
+                                          .contents_direction = layout::Direction::Column,
+                                          .contents_align = layout::Alignment::Start,
+                                      },
+                                      .name = is_screenshot_subject ? "granular.variation-menu"_s : String {},
+                                  });
 
                         auto const seed_greyed_out = mode_param.IntValue<param_values::VariationMode>() ==
                                                      param_values::VariationMode::DifferentOnEveryNote;
@@ -1290,6 +1368,8 @@ static void DoVariationButton(GuiState& g, u8 layer_index, Box row, VariationBut
                 }),
             });
     }
+
+    return btn;
 }
 
 static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
@@ -1309,18 +1389,22 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                             });
 
     // LfoOn
-    DoButtonParameter(g,
-                      DoBox(g.builder,
-                            {
-                                .parent = page,
-                                .layout {
-                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                    .contents_direction = layout::Direction::Row,
-                                    .contents_align = layout::Alignment::Start,
-                                },
-                            }),
-                      params.DescribedValue(layer_index, LayerParamIndex::LfoOn),
-                      {.extra_clickable_width = k_section_toggle_extra_clickable_width});
+    RegisterLayerNamedRect(
+        g,
+        layer_index,
+        "lfo.on"_s,
+        DoButtonParameter(g,
+                          DoBox(g.builder,
+                                {
+                                    .parent = page,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_direction = layout::Direction::Row,
+                                        .contents_align = layout::Alignment::Start,
+                                    },
+                                }),
+                          params.DescribedValue(layer_index, LayerParamIndex::LfoOn),
+                          {.extra_clickable_width = k_section_toggle_extra_clickable_width}));
 
     DoWhitespace(g.builder, page, 6);
 
@@ -1331,6 +1415,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                                    .layout {
                                        .size = {layout::k_fill_parent, 70},
                                    },
+                                   .name = layer_index == 0 ? "lfo.display"_s : String {},
                                });
     // We defer it so it's drawn using the latest versions of parameter values that might have been modified
     // by a GUI element in this function.
@@ -1341,6 +1426,18 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
     DoWhitespace(g.builder, page, 10);
 
     // Menu + label rows
+    auto const menu_rows = DoBox(g.builder,
+                                 {
+                                     .parent = page,
+                                     .layout {
+                                         .size = layout::k_hug_contents,
+                                         .contents_gap = k_page_row_gap_y,
+                                         .contents_direction = layout::Direction::Column,
+                                         .contents_align = layout::Alignment::Start,
+                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                     },
+                                     .name = layer_index == 0 ? "lfo.menus"_s : String {},
+                                 });
     auto const do_menu_label_row = [&](LayerParamIndex param_index,
                                        String warning_tooltip = {},
                                        FunctionRef<void(Box)> do_extra_row_buttons = {},
@@ -1349,7 +1446,7 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
 
         auto const row = DoBox(g.builder,
                                {
-                                   .parent = page,
+                                   .parent = menu_rows,
                                    .id_extra = loc_hash,
                                    .layout {
                                        .size = layout::k_hug_contents,
@@ -1464,11 +1561,12 @@ static void DoLfoPage(GuiState& g, u8 layer_index, Box parent) {
                                      {
                                          .parent = page,
                                          .layout {
-                                             .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                             .size = layout::k_hug_contents,
                                              .contents_gap = 20,
                                              .contents_direction = layout::Direction::Row,
                                              .contents_align = layout::Alignment::Middle,
                                          },
+                                         .name = layer_index == 0 ? "lfo.knobs"_s : String {},
                                      });
 
         {
@@ -1592,11 +1690,18 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
                            .width = k_control_width,
                            .label = false,
                        });
+        return row;
     };
 
-    do_int_label_row(LayerParamIndex::MidiTranspose);
+    RegisterLayerNamedRect(g,
+                           layer_index,
+                           "config.transpose"_s,
+                           do_int_label_row(LayerParamIndex::MidiTranspose));
 
-    do_int_label_row(LayerParamIndex::PitchBendRange);
+    RegisterLayerNamedRect(g,
+                           layer_index,
+                           "config.pitch-bend-range"_s,
+                           do_int_label_row(LayerParamIndex::PitchBendRange));
 
     // Keytrack
     {
@@ -1649,6 +1754,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
             SetParameterValue(g.engine.processor, param.info.index, state ? 0.0f : 1.0f, {});
 
         AddParamContextMenuBehaviour(g, row, param);
+        RegisterLayerNamedRect(g, layer_index, "config.keytrack"_s, row);
     }
 
     // Monophonic mode
@@ -1679,6 +1785,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
               });
 
         DoMenuParameter(g, row, param, {.width = k_wide_control_width, .label = false});
+        RegisterLayerNamedRect(g, layer_index, "config.monophonic"_s, row);
     }
 
     // MPE press/slide routing: summary button that opens a popup editor
@@ -2010,6 +2117,8 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
                     }),
                 });
         }
+
+        RegisterLayerNamedRect(g, layer_index, "config.mpe"_s, row);
     }
 
     auto const key_range_rows = DoBox(g.builder,
@@ -2021,7 +2130,7 @@ static void DoConfigPage(GuiState& g, u8 layer_index, Box parent) {
                                               .contents_direction = layout::Direction::Column,
                                               .contents_align = layout::Alignment::Start,
                                           },
-                                          .name = "key-range-rows"_s,
+                                          .name = layer_index == 0 ? "key-range-rows"_s : String {},
                                       });
 
     // Key Range row
@@ -2209,6 +2318,9 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
 
     auto const popup_id = (imgui::Id)(SourceLocationHash() ^ (u64)layer.index);
     if (intervals_btn.button_fired) g.imgui.OpenPopupMenu(popup_id, intervals_btn.imgui_id);
+    if (layer.index == 0 && IsScreenshotRequest("granular-harmony"_s) && !g.imgui.IsPopupMenuOpen(popup_id))
+        g.imgui.OpenPopupMenu(popup_id, intervals_btn.imgui_id);
+    RegisterLayerNamedRect(g, layer.index, "granular.intervals-button"_s, intervals_btn);
 
     DoRightClickMenu(g, intervals_btn, (imgui::Id)(SourceLocationHash() ^ (u64)layer.index), [&](Box root) {
         if (MenuItem(g.builder,
@@ -2236,6 +2348,7 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
             }
             r;
         });
+        if (layer.index == 0) g.imgui.RegisterNamedRect("granular.harmony-menu"_s, popup_r);
 
         DoBoxViewport(
             g.builder,
@@ -2378,13 +2491,15 @@ HarmonySelectionMenu(GuiState& g, LayerProcessor& layer, Box parent, HarmonyInte
                                     bool const hot_or_active = g.imgui.IsHotOrActive(id);
                                     auto const rounding = WwToPixels(2.0f);
 
+                                    // Hovering must not blur on and off: right after a click the cell is
+                                    // still hovered, so a hovered off cell stays lighter than any on cell.
                                     u32 bg_col;
                                     if (is_selected && hot_or_active)
-                                        bg_col = ToU32(Col {.c = Col::Surface0});
+                                        bg_col = ToU32(Col {.c = Col::Surface2});
                                     else if (is_selected)
                                         bg_col = ToU32(Col {.c = Col::Surface1});
                                     else if (hot_or_active)
-                                        bg_col = ToU32(Col {.c = Col::Surface2});
+                                        bg_col = ToU32(Col {.c = Col::Background2});
                                     else
                                         bg_col = 0;
 
@@ -2456,26 +2571,11 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
     auto& layer = g.engine.Layer(layer_index);
     auto& params = g.engine.processor.main_params;
 
-    if (layer_index == 0) {
-        Optional<param_values::PlayMode> screenshot_mode;
-        if (IsScreenshotRequest("layer-playback-granular-speed"_s))
-            screenshot_mode = param_values::PlayMode::GranularPlayback;
-        else if (IsScreenshotRequest("layer-playback-granular-fixed"_s))
-            screenshot_mode = param_values::PlayMode::GranularFixed;
-        if (screenshot_mode) {
-            SetParameterValue(g.engine.processor,
-                              ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PlayMode),
-                              (f32)*screenshot_mode,
-                              {});
-            if (*screenshot_mode == param_values::PlayMode::GranularFixed) {
-                SetParameterValue(
-                    g.engine.processor,
-                    ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::GranularPosition),
-                    0.30f,
-                    {});
-            }
-            layer.harmony_intervals.AssignBlockwise(MakeHarmonyPreset(Array {-12, 12}));
-        }
+    if (layer_index == 0 && IsGranularScreenshotRequest()) {
+        SetParameterValue(g.engine.processor,
+                          ParamIndexFromLayerParamIndex(layer_index, LayerParamIndex::PlayMode),
+                          (f32)param_values::PlayMode::GranularFixed,
+                          {});
     }
 
     auto const page = DoBox(g.builder,
@@ -2498,7 +2598,7 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
     if (!is_waveform_synth) {
         auto const param = params.DescribedValue(layer_index, LayerParamIndex::PlayMode);
 
-        DoMenuParameter(
+        auto const play_mode_menu = DoMenuParameter(
             g,
             page,
             param,
@@ -2527,8 +2627,9 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
                                               share_param.BoolValue() ? 0.0f : 1.0f,
                                               {});
                         AddParamContextMenuBehaviour(g, btn, share_param);
+                        RegisterLayerNamedRect(g, layer_index, "playback.share-grains"_s, btn);
                     }
-                    DoVariationButton(
+                    auto const variation_button = DoVariationButton(
                         g,
                         layer_index,
                         row,
@@ -2539,9 +2640,11 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
                                 "Choose whether each note scatters its grains differently or plays back the exact same grains every time."_s,
                             .greyed_out = false,
                         });
+                    RegisterLayerNamedRect(g, layer_index, "playback.variation"_s, variation_button);
                 }}
                                                               : FunctionRef<void(Box)> {},
             });
+        RegisterLayerNamedRect(g, layer_index, "playback.play-mode"_s, play_mode_menu);
     }
 
     // Waveform display + info strip
@@ -2562,6 +2665,7 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
                                              .layout {
                                                  .size = {layout::k_fill_parent, 78},
                                              },
+                                             .name = layer_index == 0 ? "playback.waveform"_s : String {},
                                          })))
             DoWaveformElement(
                 g,
@@ -2576,18 +2680,20 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
     if (!is_waveform_synth) {
         auto const param = params.DescribedValue(layer_index, LayerParamIndex::Reverse);
 
-        DoButtonParameter(g,
-                          DoBox(g.builder,
-                                {
-                                    .parent = page,
-                                    .layout {
-                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                        .contents_direction = layout::Direction::Row,
-                                        .contents_align = layout::Alignment::Start,
-                                    },
-                                }),
-                          param,
-                          {.extra_clickable_width = k_section_toggle_extra_clickable_width});
+        auto const button =
+            DoButtonParameter(g,
+                              DoBox(g.builder,
+                                    {
+                                        .parent = page,
+                                        .layout {
+                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                            .contents_direction = layout::Direction::Row,
+                                            .contents_align = layout::Alignment::Start,
+                                        },
+                                    }),
+                              param,
+                              {.extra_clickable_width = k_section_toggle_extra_clickable_width});
+        RegisterLayerNamedRect(g, layer_index, "playback.reverse"_s, button);
     }
 
     if (!is_waveform_synth && play_mode != param_values::PlayMode::GranularFixed)
@@ -2644,7 +2750,8 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
                          });
         };
 
-        auto const do_section = [&g](Box parent, u64 loc_hash = SourceLocationHash()) {
+        auto const do_section = [&g,
+                                 layer_index](Box parent, String name, u64 loc_hash = SourceLocationHash()) {
             return DoBox(g.builder,
                          {
                              .parent = parent,
@@ -2656,6 +2763,7 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
                                  .contents_align = layout::Alignment::Start,
                                  .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                              },
+                             .name = layer_index == 0 ? name : String {},
                          });
         };
 
@@ -2680,7 +2788,7 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
             auto const row = do_row(granular_container);
 
             {
-                auto const section = do_section(row);
+                auto const section = do_section(row, "granular.playhead"_s);
                 do_heading(section, "PLAYHEAD"_s);
                 auto const knob_box = do_knob_container(section);
                 do_knob(knob_box,
@@ -2691,7 +2799,7 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
             }
 
             {
-                auto const section = do_section(row);
+                auto const section = do_section(row, "granular.grains"_s);
                 do_heading(section, "GRAINS"_s);
                 auto const knob_box = do_knob_container(section);
                 do_knob(knob_box, LayerParamIndex::GranularDensity);
@@ -2705,7 +2813,7 @@ static void DoPlaybackPage(GuiState& g, u8 layer_index, Box parent) {
             auto const row = do_row(granular_container);
 
             {
-                auto const section = do_section(row);
+                auto const section = do_section(row, "granular.random"_s);
 
                 do_heading(section, "RANDOM"_s);
 
@@ -2762,6 +2870,7 @@ static void DoEnvelopeSection(GuiState& g, u8 layer_index, Box parent) {
                                        .contents_align = layout::Alignment::Start,
                                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                    },
+                                   .name = layer_index == 0 ? "main.volume-envelope"_s : String {},
                                });
 
     {
@@ -2873,6 +2982,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                                                .contents_direction = layout::Direction::Row,
                                                .contents_align = layout::Alignment::Justify,
                                            },
+                                           .name = layer_index == 0 ? "arp.heading-row"_s : String {},
                                        });
         DoButtonParameter(g,
                           heading_row,
@@ -2895,12 +3005,22 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
         if (auto const r = BoxRect(g.builder, seq_box)) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
             auto const playing = arp_state.current_step_for_gui.Load(LoadMemoryOrder::Relaxed);
-            DoArpStepSequencer(g,
-                               arp_state,
-                               window_r,
-                               snapshot,
-                               playing,
-                               g.layer_panel_states[layer_index].arp_step_sequencer_show_all);
+            auto const areas =
+                DoArpStepSequencer(g,
+                                   arp_state,
+                                   window_r,
+                                   snapshot,
+                                   playing,
+                                   g.layer_panel_states[layer_index].arp_step_sequencer_show_all);
+            if (layer_index == 0) {
+                g.imgui.RegisterNamedRect("arp.velocity-bars"_s, areas.velocity_bars);
+                g.imgui.RegisterNamedRect("arp.step-rows"_s, areas.step_rows);
+                if (areas.step_number_row)
+                    g.imgui.RegisterNamedRect("arp.step-number-row"_s, *areas.step_number_row);
+                if (areas.pitch_row) g.imgui.RegisterNamedRect("arp.pitch-row"_s, *areas.pitch_row);
+                if (areas.tie_row) g.imgui.RegisterNamedRect("arp.tie-row"_s, *areas.tie_row);
+                if (areas.gate_row) g.imgui.RegisterNamedRect("arp.gate-row"_s, *areas.gate_row);
+            }
         }
     }
 
@@ -2935,7 +3055,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
               });
     };
 
-    auto const do_section = [&](Box parent, u64 loc_hash = SourceLocationHash()) {
+    auto const do_section = [&](Box parent, String name, u64 loc_hash = SourceLocationHash()) {
         return DoBox(g.builder,
                      {
                          .parent = parent,
@@ -2947,6 +3067,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                              .contents_align = layout::Alignment::Start,
                              .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                          },
+                         .name = layer_index == 0 ? name : String {},
                      });
     };
 
@@ -3140,7 +3261,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
 
     // SEQUENCE section
     {
-        auto const section = do_section(controls);
+        auto const section = do_section(controls, "arp.sequence-section"_s);
         do_heading(section, "SEQUENCE"_s);
         auto const row = do_control_row(section);
 
@@ -3205,7 +3326,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
 
     // CONFIG section
     {
-        auto const section = do_section(controls);
+        auto const section = do_section(controls, "arp.config-section"_s);
         do_heading(section, "CONFIG"_s);
         auto const row = do_control_row(section);
 
@@ -3231,6 +3352,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
                         "Only the notes are recorded — each step keeps the velocity, gate and tie you've already set."_s,
                     .tooltip_avoid_box = &cell,
                     .button_behaviour = imgui::ButtonConfig {},
+                    .name = layer_index == 0 ? "arp.record-button"_s : String {},
                 });
 
             if (auto const r = BoxRect(g.builder, rec_btn)) {
@@ -3256,7 +3378,7 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
 
     // SLICING section (slice mode only)
     if (is_sliced) {
-        auto const section = do_section(controls);
+        auto const section = do_section(controls, "arp.slicing-section"_s);
         do_heading(section, "SLICING"_s);
         auto const row = do_control_row(section);
 
@@ -3301,11 +3423,14 @@ static void DoArpPage(GuiState& g, u8 layer_index, Box parent) {
 static bool IsLayerScreenshotRequest() {
     if (IsScreenshotRequest("layer-top-controls"_s)) return true;
     if (IsScreenshotRequest("layers"_s)) return true;
-    if (IsScreenshotRequest("layer-playback-granular-speed"_s)) return true;
     if (IsScreenshotRequest("layer-playback-granular-fixed"_s)) return true;
     if (IsScreenshotRequest("key-range-controls"_s)) return true;
     if (IsScreenshotRequest("velocity-curve"_s)) return true;
     if (IsScreenshotRequest("loop-mode-menu"_s)) return true;
+    if (IsScreenshotRequest("looping"_s)) return true;
+    if (IsScreenshotRequest("layer-tab-menu"_s)) return true;
+    if (IsGranularScreenshotRequest()) return true;
+    if (IsArpSectionScreenshotRequest()) return true;
     // Layer 1's Instrument browser opens from this tab, where it sits directly below its selector.
     for (auto const region : Array {"browser-browse"_s, "browser-full"_s, "browser-menu"_s})
         if (IsScreenshotRequest(region)) return true;
@@ -3397,11 +3522,14 @@ void DoLayerPanel(GuiState& g, GuiFrameContext const& frame_context, u8 layer_in
             break;
         }
 
-        if (IsScreenshotRequest("layer-playback-granular-speed"_s) ||
-            IsScreenshotRequest("layer-playback-granular-fixed"_s) ||
-            IsScreenshotRequest("loop-mode-menu"_s)) {
+        if (IsGranularScreenshotRequest() || IsScreenshotRequest("loop-mode-menu"_s) ||
+            IsScreenshotRequest("looping"_s)) {
             g.layer_panel_states[layer_index].selected_page = LayerPageType::Playback;
         }
+        if (IsScreenshotRequest("layer-tab-menu"_s))
+            g.layer_panel_states[layer_index].selected_page = LayerPageType::Main;
+        if (IsArpSectionScreenshotRequest())
+            g.layer_panel_states[layer_index].selected_page = LayerPageType::Arp;
     }
 }
 

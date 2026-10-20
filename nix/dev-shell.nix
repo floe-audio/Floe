@@ -38,6 +38,7 @@ pkgs.mkShell rec {
     pkgs.zls_0_14
     pkgs.sentry-cli
     pkgs.nodejs_24 # For Docusaurus website development
+    pkgs.rclone # For uploading website images/videos to assets.floe.audio
     pkgs.hyperfine
 
     # dsymutil internally calls "lipo", so we have to make sure it's available under that name

@@ -69,6 +69,9 @@ void MidPanelLayersContent(GuiBuilder& builder,
             {.icon = MidPanelIcon::Shuffle,
              .tooltip =
                  "Jump to a random Instrument on every layer at once, as if you'd clicked each layer's random button in turn.\n\nEach layer picks from whatever its Instrument Browser filters currently allow, so you can put bounds on the randomness: filter one layer to bass sounds, say, and another to textures, then click this to roll through combinations that stay within those bounds."_s});
+        if (auto const r = BoxRect(builder, rand_btn))
+            builder.imgui.RegisterNamedRect("layers.random-all-button"_s,
+                                            builder.imgui.ViewportRectToWindowRect(*r));
 
         if (rand_btn.button_fired) {
             Array<Optional<sample_lib::InstrumentId>, k_num_layers> new_ids {};
@@ -108,6 +111,9 @@ void MidPanelLayersContent(GuiBuilder& builder,
                      ? "Clear the Instrument from every layer, as if you'd clicked each layer's clear button in turn. All the layers become empty: with no sound sources, Floe won't make any sound."_s
                      : "Clear the Instrument from every layer. There's nothing to clear right now, as all the layers are already empty."_s,
              .greyed_out = !any_loaded});
+        if (auto const r = BoxRect(builder, unload_btn))
+            builder.imgui.RegisterNamedRect("layers.unload-all-button"_s,
+                                            builder.imgui.ViewportRectToWindowRect(*r));
 
         if (unload_btn.button_fired && any_loaded) {
             BeginUndoableStep(g.engine, "Unload all instruments"_s);

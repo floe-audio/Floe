@@ -54,6 +54,9 @@ struct DeviceManager {
 
         bool failed = false;
 
+        // Runs the audio thread as normal but sends the output nowhere. Ignores saved selections.
+        bool use_null_backend = false;
+
         // Cross-thread data.
         struct Stream {
             Optional<ma_device> device {};

@@ -10,3 +10,5 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                             GuiFrameContext const& frame_context,
                             Box parent,
                             Box tab_extra_buttons_box);
+
+bool IsEffectScreenshotRequest();

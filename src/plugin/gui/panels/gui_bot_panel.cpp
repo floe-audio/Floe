@@ -133,38 +133,27 @@ static Optional<s64> OctaveDragger(GuiBuilder& builder,
 static void DoBotPanel(GuiState& g) {
     auto& builder = g.builder;
 
-    struct KeyRangeScreenshot {
-        String region;
-        s64 octave;
-        f32 low;
-        f32 high;
-    };
-    static constexpr KeyRangeScreenshot k_key_range_screenshots[] = {
-        {"key-range-bars"_s, 0, 48, 84},
-        {"key-range-enlarged"_s, 0, 36, 84},
-    };
     constexpr prefs::SetValueOptions k_silent {.dont_send_on_change_event = true,
                                                .dont_mark_as_changed = true};
     auto const prev_octave = prefs::LookupInt(g.prefs, prefs::key::k_gui_keyboard_octave).ValueOr(0);
-    bool key_range_screenshot_active = false;
+    bool const key_range_screenshot_active = IsScreenshotRequest("key-range-bars"_s) ||
+                                             IsScreenshotRequest("key-range-enlarged"_s) ||
+                                             IsScreenshotRequest("keyboard"_s);
     DEFER {
         if (key_range_screenshot_active)
             prefs::SetValue(g.prefs, prefs::key::k_gui_keyboard_octave, prev_octave, k_silent);
     };
-    for (auto const& s : k_key_range_screenshots) {
-        if (!IsScreenshotRequest(s.region)) continue;
-        key_range_screenshot_active = true;
+    if (key_range_screenshot_active) {
         g.mid_panel_state.tab = MidPanelTab::Layers;
-        prefs::SetValue(g.prefs, prefs::key::k_gui_keyboard_octave, s.octave, k_silent);
-        auto& main_params = g.engine.processor.main_params;
-        auto const set = [&](LayerParamIndex p, f32 v) {
-            main_params.SetLinearValue(ParamIndexFromLayerParamIndex(0, p), v);
-        };
-        set(LayerParamIndex::KeyRangeLow, s.low);
-        set(LayerParamIndex::KeyRangeHigh, s.high);
-        set(LayerParamIndex::KeyRangeLowFade, 6);
-        set(LayerParamIndex::KeyRangeHighFade, 6);
-        break;
+        prefs::SetValue(g.prefs, prefs::key::k_gui_keyboard_octave, s64 {0}, k_silent);
+    }
+    if (IsScreenshotRequest("macros"_s)) {
+        g.mid_panel_state.tab = MidPanelTab::Layers;
+        g.bottom_panel_state.type = BottomPanelType::EditMacros;
+    }
+    if (IsScreenshotRequest("macros-play"_s) || IsScreenshotRequest("keyboard"_s)) {
+        g.mid_panel_state.tab = MidPanelTab::Layers;
+        g.bottom_panel_state.type = BottomPanelType::Play;
     }
 
     bool const perform_tab_active = g.mid_panel_state.tab == MidPanelTab::Perform;
@@ -195,6 +184,7 @@ static void DoBotPanel(GuiState& g) {
                                         .contents_align = layout::Alignment::Middle,
                                         .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                     },
+                                    .name = "bot-panel.tabs"_s,
                                 });
 
         auto const tab_button =
@@ -271,6 +261,7 @@ static void DoBotPanel(GuiState& g) {
                                                  .contents_align = layout::Alignment::Start,
                                                  .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                              },
+                                             .name = "bot-panel.play-macros"_s,
                                          });
 
             for (auto const [macro_index, param_index] : Enumerate(k_macro_params))
@@ -325,6 +316,7 @@ static void DoBotPanel(GuiState& g) {
                                                   .contents_align = layout::Alignment::Middle,
                                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                                               },
+                                              .name = "bot-panel.octave"_s,
                                           });
 
             Optional<s64> new_octave {};

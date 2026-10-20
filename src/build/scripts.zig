@@ -120,6 +120,10 @@ fn runWebsitePromoteBetaToStable(context: *Context) !u8 {
         },
     }
 
+    // Stable docs keep pointing at the images and videos they were promoted with.
+    try dir.makePath("versioned_asset_manifests");
+    try dir.copyFile("asset-manifest.json", dir, "versioned_asset_manifests/version-stable.json", .{});
+
     return 0;
 }
 

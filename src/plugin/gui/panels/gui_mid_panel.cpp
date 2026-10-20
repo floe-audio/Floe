@@ -243,6 +243,11 @@ DoMidPanelTabBar(GuiBuilder& builder, GuiState& g, GuiFrameContext const& frame_
                                      },
                                      (u64)tab);
 
+        if (tab == g.mid_panel_state.tab)
+            if (auto const r = BoxRect(builder, btn))
+                builder.imgui.RegisterNamedRect("mid-panel.selected-tab"_s,
+                                                builder.imgui.ViewportRectToWindowRect(*r));
+
         if (btn.button_fired) new_tab = tab;
     }
 
@@ -316,10 +321,15 @@ void MidPanel(GuiState& g, Rect bounds, GuiFrameContext const& frame_context) {
     HandleStandaloneScreenshotHotkey(g, frame_context);
 
     for (auto const tab : EnumIterator<MidPanelTab>()) {
-        if (!IsScreenshotRequest(EnumToString(tab))) continue;
+        DynamicArrayBounded<char, 32> page_region;
+        fmt::Append(page_region, "page-{}", EnumToString(tab));
+        if (!IsScreenshotRequest(EnumToString(tab)) && !IsScreenshotRequest(page_region)) continue;
         g.mid_panel_state.tab = tab;
         break;
     }
+    if (IsScreenshotRequest("knob"_s) || IsScreenshotRequest("knob-menu"_s) || IsEffectScreenshotRequest())
+        g.mid_panel_state.tab = MidPanelTab::Effects;
+    if (IsScreenshotRequest("perform-tab-and-arrows"_s)) g.mid_panel_state.tab = MidPanelTab::Perform;
     LayerPanelPreUpdate(g);
 
     DoBoxViewport(

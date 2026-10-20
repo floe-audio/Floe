@@ -2,8 +2,6 @@ local library = floe.new_library({
     name = "Test Lua",
     tagline = "Tagline",
     author = "Tester",
-    background_image_path = "images/background.jpg",
-    icon_image_path = "images/icon.png",
     minor_version = 2,
 })
 
@@ -91,5 +89,30 @@ for _, config in pairs(auto_map_config) do
         },
     })
 end
+
+-- ================================================================================
+-- 2 seconds of 4/4 at 120 BPM, one slice per beat.
+local drum_loop = floe.new_instrument(library, {
+    name = "Drum Loop",
+    folders = "Loops",
+    description = "Description",
+    tags = {},
+})
+
+floe.add_region(drum_loop, {
+    root_key = 60,
+    path = "Samples/drum-loop.flac",
+    slices = {
+        { start_frame = 0, length_proportion = 1 },
+        { start_frame = 22050, length_proportion = 1 },
+        { start_frame = 44100, length_proportion = 1 },
+        { start_frame = 66150, length_proportion = 1 },
+    },
+    loop_beats = 4,
+    native_bpm = 120,
+    loop = {
+        loop_requirement = "never-loop",
+    },
+})
 
 return library

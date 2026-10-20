@@ -192,7 +192,8 @@ static void EnumerateAudioDevices(DeviceManager& dm) {
     if (!dm.audio.context_initialised) {
         bool ok = false;
         Optional<ma_backend> chosen_backend {};
-        chosen_backend = FindAudioBackend(dm.audio.selected_backend_name);
+        chosen_backend =
+            dm.audio.use_null_backend ? ma_backend_null : FindAudioBackend(dm.audio.selected_backend_name);
         if (chosen_backend) {
             ma_backend backends[1] = {*chosen_backend};
             ok = ma_context_init(backends, 1, nullptr, &dm.audio.context) == MA_SUCCESS;
@@ -466,15 +467,16 @@ static void SetupDeviceStore(DeviceManager& dm, ArenaAllocator& arena) {
     PLACEMENT_NEW(&dm.store.storage) persistent_store::Store {.filepath = *path};
     dm.store.has_value = true;
 
-    if (auto const r = persistent_store::Get(*dm.store, k_audio_device_store_key);
-        r.tag == persistent_store::GetResult::Found) {
-        auto const data = r.Get<persistent_store::Value const*>()->data;
-        dyn::Assign(dm.audio.selected_name, String {(char const*)data.data, data.size});
-    }
     if (auto const r = persistent_store::Get(*dm.store, k_midi_device_store_key);
         r.tag == persistent_store::GetResult::Found) {
         auto const data = r.Get<persistent_store::Value const*>()->data;
         dyn::Assign(dm.midi.selected_name, String {(char const*)data.data, data.size});
+    }
+    if (dm.audio.use_null_backend) return;
+    if (auto const r = persistent_store::Get(*dm.store, k_audio_device_store_key);
+        r.tag == persistent_store::GetResult::Found) {
+        auto const data = r.Get<persistent_store::Value const*>()->data;
+        dyn::Assign(dm.audio.selected_name, String {(char const*)data.data, data.size});
     }
     if (auto const r = persistent_store::Get(*dm.store, k_audio_backend_store_key);
         r.tag == persistent_store::GetResult::Found) {

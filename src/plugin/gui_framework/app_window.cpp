@@ -788,17 +788,26 @@ static void UpdateAndRender(AppWindow& window) {
                 } else {
                     LogInfo(ModuleName::Gui, "Saved screenshot");
 
-                    if (req.overlays.size) {
-                        auto const ext = path::Extension((String)path);
-                        DynamicArray<char> json_path {scratch};
-                        dyn::AppendSpan(json_path, ((String)path).SubSpan(0, path.size - ext.size));
-                        dyn::AppendSpan(json_path, ".json"_s);
+                    auto const ext = path::Extension((String)path);
+                    DynamicArray<char> json_path {scratch};
+                    dyn::AppendSpan(json_path, ((String)path).SubSpan(0, path.size - ext.size));
+                    dyn::AppendSpan(json_path, ".json"_s);
 
+                    if (!req.overlays.size) {
+                        // A previous capture of this screenshot may have had overlays.
+                        if (auto const d =
+                                Delete(json_path,
+                                       {.type = DeleteOptions::Type::File, .fail_if_not_exists = false});
+                            d.HasError())
+                            LogError(ModuleName::Gui, "Failed to delete stale overlay JSON: {}", d.Error());
+                    } else {
                         DynamicArray<char> json_buf {scratch};
                         auto writer = dyn::WriterFor(json_buf);
                         json::WriteContext ctx {.out = writer, .add_whitespace = true};
                         auto const write_json = [&]() -> ErrorCodeOr<void> {
                             TRY(json::WriteObjectBegin(ctx));
+                            TRY(json::WriteKeyValue(ctx, "width", shot->size.width));
+                            TRY(json::WriteKeyValue(ctx, "height", shot->size.height));
                             TRY(json::WriteKeyArrayBegin(ctx, "overlays"));
                             auto const inv_w = 1.0f / req.rect.w;
                             auto const inv_h = 1.0f / req.rect.h;

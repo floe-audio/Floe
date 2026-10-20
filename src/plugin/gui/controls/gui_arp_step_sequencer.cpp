@@ -25,12 +25,12 @@ static void ModifyStep(ArpeggiatorState& s, u32 i, Mutate&& mutate) {
     s.steps[i].Store(step, StoreMemoryOrder::Relaxed);
 }
 
-void DoArpStepSequencer(GuiState& g,
-                        ArpeggiatorState& arp_state,
-                        Rect rect,
-                        ArpGuiSnapshot const& snapshot,
-                        u32 playing_step,
-                        bool& show_all) {
+ArpStepSequencerAreas DoArpStepSequencer(GuiState& g,
+                                         ArpeggiatorState& arp_state,
+                                         Rect rect,
+                                         ArpGuiSnapshot const& snapshot,
+                                         u32 playing_step,
+                                         bool& show_all) {
     auto& imgui = g.imgui;
 
     imgui.PushId((uintptr)&arp_state);
@@ -1089,4 +1089,29 @@ void DoArpStepSequencer(GuiState& g,
     }
 
     imgui.EndViewport();
+
+    auto const visible_x = Max(bar_rect.x, rect.x);
+    auto const visible_w = Max(Min(bar_rect.Right(), rect.Right()) - visible_x, 0.0f);
+    ArpStepSequencerAreas areas {
+        .velocity_bars = {.xywh {visible_x, bar_rect.y, visible_w, bar_rect.h}},
+        .step_rows = {.xywh {visible_x, bar_rect.Bottom(), visible_w, rect.Bottom() - bar_rect.Bottom()}},
+    };
+    if (!show_all) {
+        // Mirrors the row layout in the step loop.
+        constexpr f32 k_row_gap = 1;
+        auto row_y = bar_rect.Bottom() + k_row_gap;
+        auto const row_rect = [&](f32 h) { return Rect {.xywh {visible_x, row_y, visible_w, h}}; };
+        areas.step_number_row = row_rect(row_height + label_pad);
+        row_y += row_height + k_row_gap;
+        if (edit.step_note) {
+            areas.pitch_row = row_rect(row_height);
+            row_y += row_height + k_row_gap;
+        }
+        if (edit.step_tie) {
+            areas.tie_row = row_rect(row_height);
+            row_y += row_height + k_row_gap;
+        }
+        areas.gate_row = row_rect(knob_size + (label_pad * 2));
+    }
+    return areas;
 }

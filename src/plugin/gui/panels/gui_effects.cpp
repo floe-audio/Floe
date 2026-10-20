@@ -15,6 +15,7 @@
 #include "gui/controls/gui_distortion_display.hpp"
 #include "gui/controls/gui_filter_graphs.hpp"
 #include "gui/core/custom_icons.hpp"
+#include "gui/core/gui_screenshot.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -40,6 +41,47 @@ constexpr auto k_phaser_params = ComptimeParamSearch<ComptimeParamSearchOptions 
     .skip = ParamIndex::PhaserOn,
     .skip2 = ParamIndex::PhaserMix,
 }>();
+
+static String EffectScreenshotIdName(EffectType type) {
+    switch (type) {
+        case EffectType::Distortion: return "effect-distortion"_s;
+        case EffectType::BitCrush: return "effect-bit-crush"_s;
+        case EffectType::Compressor: return "effect-compressor"_s;
+        case EffectType::FilterEffect: return "effect-filter"_s;
+        case EffectType::StereoWiden: return "effect-stereo-widen"_s;
+        case EffectType::Chorus: return "effect-chorus"_s;
+        case EffectType::Reverb: return "effect-reverb"_s;
+        case EffectType::Delay: return "effect-delay"_s;
+        case EffectType::ConvolutionReverb: return "effect-convolution-reverb"_s;
+        case EffectType::Phaser: return "effect-phaser"_s;
+        case EffectType::Eq: return "effect-eq"_s;
+        case EffectType::Limiter: return "effect-limiter"_s;
+        case EffectType::Count: break;
+    }
+    PanicIfReached();
+}
+
+static Optional<EffectType> RequestedEffectScreenshot() {
+    for (auto const type_index : Range(k_num_effect_types))
+        if (IsScreenshotRequest(EffectScreenshotIdName((EffectType)type_index)))
+            return (EffectType)type_index;
+    return k_nullopt;
+}
+
+bool IsEffectScreenshotRequest() { return RequestedEffectScreenshot().HasValue(); }
+
+static void PrepareRackForEffectScreenshot(GuiState& g) {
+    // The knob screenshots show the Filter's knobs, which must be in view whatever the preset's rack order.
+    auto const requested = IsScreenshotRequest("knob"_s) || IsScreenshotRequest("knob-menu"_s)
+                               ? Optional<EffectType> {EffectType::FilterEffect}
+                               : RequestedEffectScreenshot();
+    if (!requested) return;
+    for (auto const type_index : Range(k_num_effect_types))
+        g.engine.fx_visible.SetToValue(type_index, type_index == ToInt(*requested));
+    auto const on_param = k_effect_info[ToInt(*requested)].on_param_index;
+    if (!g.engine.processor.main_params.BoolValue(on_param))
+        SetParameterValue(g.engine.processor, on_param, 1.0f, {});
+}
 
 struct FXColours {
     UiColMap back;
@@ -1231,7 +1273,10 @@ static void DoEffectParams(GuiState& g,
                                                .size = {200, 70},
                                            },
                                        });
-            if (auto const r = BoxRect(g.builder, vis_box)) DoEffectFilterGraph(g, *r, greyed_out);
+            if (auto const r = BoxRect(g.builder, vis_box)) {
+                DoEffectFilterGraph(g, *r, greyed_out);
+                g.imgui.RegisterNamedRect("effects.filter-graph"_s, g.imgui.ViewportRectToWindowRect(*r));
+            }
 
             DoMenuParameter(g,
                             param_container,
@@ -1242,11 +1287,14 @@ static void DoEffectParams(GuiState& g,
                 param_container,
                 params.DescribedValue(ParamIndex::FilterCutoff),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
-            DoKnobParameter(
+            auto const resonance_knob = DoKnobParameter(
                 g,
                 param_container,
                 params.DescribedValue(ParamIndex::FilterResonance),
                 {.width = k_knob_w, .knob_highlight_col = highlight_col, .greyed_out = greyed_out});
+            if (auto const r = BoxRect(g.builder, resonance_knob))
+                g.imgui.RegisterNamedRect("effects.filter-resonance-knob"_s,
+                                          g.imgui.ViewportRectToWindowRect(*r));
             if (using_gain)
                 DoKnobParameter(g,
                                 param_container,
@@ -1903,12 +1951,15 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
         bool const bypassed = !EffectIsOn(params, fx);
 
         auto const heading_btn = DoEffectHeading(g, *fx, left_pane, at_rack_top_left, bypassed);
-        if (auto const r = BoxRect(g.builder, heading_btn))
+        if (auto const r = BoxRect(g.builder, heading_btn)) {
             DoEffectRightClickMenu(g,
                                    heading_btn.imgui_id,
                                    g.imgui.ViewportRectToWindowRect(*r),
                                    fx->type,
                                    false);
+            if (effect_sections.size == 1)
+                g.imgui.RegisterNamedRect("effects.second-heading"_s, g.imgui.ViewportRectToWindowRect(*r));
+        }
 
         if (!is_being_dragged) {
             // Drag start on heading
@@ -1951,6 +2002,10 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
                   });
 
         DoEffectParams(g, frame_context, *fx, param_container, highlight_col, bypassed);
+        if (effect_sections.size == 0)
+            if (auto const r = BoxRect(g.builder, common_controls))
+                g.imgui.RegisterNamedRect("effects.first-common-controls"_s,
+                                          g.imgui.ViewportRectToWindowRect(*r));
 
         DoKnobParameter(g,
                         common_controls,
@@ -2030,6 +2085,9 @@ DoEffectSections(GuiState& g, GuiFrameContext const& frame_context, Box root, Ef
 
         if (auto const r = BoxRect(g.builder, section)) {
             auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
+
+            if (RequestedEffectScreenshot() == fx->type)
+                g.imgui.RegisterNamedRect("effects.screenshot-section"_s, window_r);
 
             DrawFxDividerLine(g, window_r, LiveCol(UiColMap::MidViewportDivider), 0b0001);
 
@@ -2268,6 +2326,8 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                             GuiFrameContext const& frame_context,
                             Box parent,
                             Box tab_extra_buttons_box) {
+    PrepareRackForEffectScreenshot(g);
+
     // Add randomise button to heading.
     {
         auto const rand_btn = DoMidPanelIconButton(
@@ -2276,6 +2336,9 @@ void MidPanelEffectsContent(GuiBuilder& builder,
             {.icon = MidPanelIcon::Shuffle,
              .tooltip =
                  "Roll the dice on the rack: each effect is randomly put in or taken out, and the chain is shuffled into a new order. A quick way to land on combinations you'd never have reached for, and you can undo if a roll doesn't work out."_s});
+
+        if (auto const r = BoxRect(builder, rand_btn))
+            g.imgui.RegisterNamedRect("effects.randomise-button"_s, g.imgui.ViewportRectToWindowRect(*r));
 
         if (rand_btn.button_fired) {
             BeginUndoableStep(g.engine, "Randomise effects"_s);
@@ -2349,6 +2412,9 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                                                       .tooltip = "Remove all effects from the rack.",
                                                       .greyed_out = !any_visible});
 
+        if (auto const r = BoxRect(builder, remove_btn))
+            g.imgui.RegisterNamedRect("effects.remove-all-button"_s, g.imgui.ViewportRectToWindowRect(*r));
+
         if (remove_btn.button_fired && any_visible) {
             BeginUndoableStep(g.engine, "Remove all effects"_s);
             DEFER { EndUndoableStep(g.engine); };
@@ -2384,6 +2450,7 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                                                .contents_direction = layout::Direction::Column,
                                                .contents_align = layout::Alignment::Start,
                                            },
+                                           .name = "effects.switchboard"_s,
                                        });
 
         if (auto const r = BoxRect(builder, switchboard))
@@ -2402,6 +2469,7 @@ void MidPanelEffectsContent(GuiBuilder& builder,
                                     .layout {
                                         .size = layout::k_fill_parent,
                                     },
+                                    .name = "effects.rack"_s,
                                 });
 
         if (auto const r = BoxRect(builder, rack))

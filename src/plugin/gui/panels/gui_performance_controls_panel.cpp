@@ -12,6 +12,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/core/custom_icons.hpp"
+#include "gui/core/gui_screenshot.hpp"
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
@@ -420,6 +421,9 @@ static void HeaderProfileControl(GuiBuilder& builder,
                                         .width = 150,
                                     });
     if (btn.button_fired) builder.imgui.OpenPopupMenu(popup_id, btn.imgui_id);
+    if (auto const r = BoxRect(builder, btn))
+        builder.imgui.RegisterNamedRect("performance-controls.profiles"_s,
+                                        builder.imgui.ViewportRectToWindowRect(*r));
 
     if (builder.imgui.IsPopupMenuOpen(popup_id))
         DoBoxViewport(builder,
@@ -446,28 +450,36 @@ static void ReproducibilityTab(GuiBuilder& builder, PerformanceControlsPanelCont
                                         .contents_align = layout::Alignment::Start,
                                         .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                     },
+                                    .name = "reproducibility.controls"_s,
                                 });
+
+    // Named hugging wrappers so the doc screenshot can number each setting.
+    auto const named_row = [&](String name) {
+        return DoBox(builder,
+                     {
+                         .parent = controls,
+                         .id_extra = HashFnv1a(name),
+                         .layout {
+                             .size = layout::k_hug_contents,
+                             .contents_gap = k_medium_gap,
+                             .contents_direction = layout::Direction::Row,
+                             .contents_align = layout::Alignment::Start,
+                             .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                         },
+                         .name = name,
+                     });
+    };
 
     if (CheckboxButton(
             builder,
-            controls,
+            named_row("reproducibility.reset-on-transport"_s),
             "Reset on transport"_s,
             settings.reset_on_transport,
             "Reset round robin positions and random sequences when the DAW transport starts playing"_s))
         settings.reset_on_transport = !settings.reset_on_transport;
 
     {
-        auto const row = DoBox(builder,
-                               {
-                                   .parent = controls,
-                                   .layout {
-                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                       .contents_gap = k_medium_gap,
-                                       .contents_direction = layout::Direction::Row,
-                                       .contents_align = layout::Alignment::Start,
-                                       .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                   },
-                               });
+        auto const row = named_row("reproducibility.reset-keyswitch"_s);
 
         bool const keyswitch_enabled = settings.reset_keyswitch.HasValue();
 
@@ -501,7 +513,7 @@ static void ReproducibilityTab(GuiBuilder& builder, PerformanceControlsPanelCont
 
     if (auto const v = IntField(
             builder,
-            controls,
+            named_row("reproducibility.seed"_s),
             {
                 .label = "Seed",
                 .tooltip =
@@ -531,6 +543,7 @@ static void MpeTab(GuiBuilder& builder, PerformanceControlsPanelContext& context
                                         .contents_align = layout::Alignment::Start,
                                         .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                     },
+                                    .name = "mpe.controls"_s,
                                 });
 
     if (CheckboxButton(builder,
@@ -990,6 +1003,7 @@ static void PerformanceControlsPanel(GuiBuilder& builder,
                           .contents_align = layout::Alignment::Start,
                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
                       },
+                      .name = "performance-controls.defaults-row"_s,
                   });
 
         if (!state.new_instance_defaults_cache)
@@ -1086,7 +1100,11 @@ static void PerformanceControlsPanel(GuiBuilder& builder,
         cfg.index = ToInt(tab);
         dyn::Append(tabs, cfg);
     }
-    DoModalTabBar(builder, {.parent = root, .tabs = tabs, .current_tab_index = ToIntRef(state.tab)});
+    auto const tab_bar =
+        DoModalTabBar(builder, {.parent = root, .tabs = tabs, .current_tab_index = ToIntRef(state.tab)});
+    if (auto const r = BoxRect(builder, tab_bar))
+        builder.imgui.RegisterNamedRect("performance-controls.tabs"_s,
+                                        builder.imgui.ViewportRectToWindowRect(*r));
 
     // The tab dispatch happens inside the viewport's deferred `run`, which executes only after the tab
     // bar's click handling above has fully resolved `state.tab` for this frame. Reading `state.tab`
@@ -1124,6 +1142,15 @@ static void PerformanceControlsPanel(GuiBuilder& builder,
 void DoPerformanceControlsPanel(GuiBuilder& builder,
                                 PerformanceControlsPanelContext& context,
                                 PerformanceControlsPanelState& state) {
+    if (IsScreenshotRequest("performance-controls"_s) || IsScreenshotRequest("reproducibility"_s) ||
+        IsScreenshotRequest("midi-cc"_s) || IsScreenshotRequest("mpe"_s)) {
+        if (!builder.imgui.IsModalOpen(state.k_panel_id)) builder.imgui.OpenModalViewport(state.k_panel_id);
+        if (IsScreenshotRequest("reproducibility"_s))
+            state.tab = PerformanceControlsPanelState::Tab::Reproducibility;
+        if (IsScreenshotRequest("midi-cc"_s)) state.tab = PerformanceControlsPanelState::Tab::MidiCc;
+        if (IsScreenshotRequest("mpe"_s)) state.tab = PerformanceControlsPanelState::Tab::Mpe;
+    }
+
     if (!builder.imgui.IsModalOpen(state.k_panel_id)) {
         state.new_instance_defaults_cache = k_nullopt;
         return;

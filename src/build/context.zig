@@ -23,6 +23,7 @@ pub const Options = struct {
     use_system_pluginval: bool,
     bgfx_renderer: bool,
     targets: ?[]const u8,
+    screenshot_presets: ?[]const u8,
 };
 
 pub const BuildContext = struct {
@@ -98,7 +99,9 @@ pub const TopLevelSteps = struct {
     website_gen: *std.Build.Step,
     website_build: *std.Build.Step,
     website_dev: *std.Build.Step,
+    generate_manual: *std.Build.Step,
     website_promote: *std.Build.Step,
+    website_upload_assets: *std.Build.Step,
     remove_unused_gui_defs: *std.Build.Step,
     update_copyright_years: *std.Build.Step,
     gen_doc_screenshots: *std.Build.Step,

@@ -621,7 +621,12 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
                                    preset.full_path_hash,
                                    PresetRightClickMenu);
 
-            if (is_current) ScrollBrowserToShowCurrent(builder, state.common_state, item.box);
+            if (is_current) {
+                ScrollBrowserToShowCurrent(builder, state.common_state, item.box);
+                if (auto const r = BoxRect(builder, item.box))
+                    builder.imgui.RegisterNamedRect("preset-browser.current-item"_s,
+                                                    builder.imgui.ViewportRectToWindowRect(*r));
+            }
 
             if (item.fired && !is_current) LoadPreset(context, state, cursor, false);
 
@@ -779,6 +784,8 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
     constexpr auto k_user_banks_section_id = HashFnv1a("preset-user-banks-section");
 
     bool const is_screenshot_request = IsScreenshotRequest("uninstall-preset-bank"_s);
+    if (IsScreenshotRequest("preset-browser"_s) && !builder.imgui.IsModalOpen(state.k_panel_id))
+        builder.imgui.OpenModalViewport(state.k_panel_id);
     if (is_screenshot_request) {
         if (!builder.imgui.IsModalOpen(state.k_panel_id)) builder.imgui.OpenModalViewport(state.k_panel_id);
         for (auto const id : Array {k_factory_banks_section_id, k_user_banks_section_id})
@@ -806,6 +813,21 @@ void DoPresetBrowser(GuiBuilder& builder, PresetBrowserContext& context, PresetB
 
     context.Init(builder.arena);
     DEFER { context.Deinit(); };
+
+    // Open on the loaded preset's bank, as the locate button would, so the list shows a tidy set of presets
+    // that suit the screenshot preset's library.
+    if (IsScreenshotRequest("preset-browser"_s) && !context.folders_scanning) {
+        if (auto const current = ResolveCurrentLoadedCursor(context)) {
+            auto const& bank =
+                *CollectionRootFolder(&context.presets_snapshot.folders[current->folder_index]->node);
+            auto& folder_filter = state.common_state.Filter(BrowserFilter::Folder);
+            if (!folder_filter.Contains(bank.Hash())) {
+                state.common_state.ClearAll();
+                folder_filter.Add(bank.Hash(), bank.display_name.size ? bank.display_name : bank.name);
+                state.common_state.browse = {};
+            }
+        }
+    }
 
     TagsFilters tags_filters {};
     tags_filters.available_tags = context.presets_snapshot.used_tags;

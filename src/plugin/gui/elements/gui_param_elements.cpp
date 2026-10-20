@@ -8,6 +8,7 @@
 
 #include "engine/engine.hpp"
 #include "gui/core/gui_prefs.hpp"
+#include "gui/core/gui_screenshot.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_element_drawing.hpp"
@@ -379,20 +380,42 @@ void AddParamContextMenuBehaviour(GuiState& g,
                                           hash;
                                       }));
 
+    // The Effects page's Filter Cutoff knob, with its menu open.
+    auto const is_menu_screenshot = params.size == 1 && params[0].info.index == ParamIndex::FilterCutoff &&
+                                    IsScreenshotRequest("knob-menu"_s);
+    if (is_menu_screenshot && All(window_r.size > 0.0f) && !g.imgui.IsPopupMenuOpen(popup_id))
+        g.imgui.OpenPopupMenu(popup_id, id);
+
     DoRightClickMenu(
         g,
         {
             .button_id = id,
             .popup_id = popup_id,
             .interaction_r = window_r,
-            .do_menu_items = [&g, indices = ({
-                                      auto const indices =
-                                          g.scratch_arena.AllocateExactSizeUninitialised<ParamIndex>(
-                                              params.size);
-                                      for (auto const i : Range(params.size))
-                                          indices[i] = params[i].info.index;
-                                      indices;
-                                  })](Box root) { DoParamContextMenu(g, root, indices); },
+            .do_menu_items =
+                [&g, is_menu_screenshot, indices = ({
+                                             auto const indices =
+                                                 g.scratch_arena.AllocateExactSizeUninitialised<ParamIndex>(
+                                                     params.size);
+                                             for (auto const i : Range(params.size))
+                                                 indices[i] = params[i].info.index;
+                                             indices;
+                                         })](Box root) {
+                    // A named wrapper so the screenshot can find the menu.
+                    auto const menu = is_menu_screenshot
+                                          ? DoBox(g.builder,
+                                                  {
+                                                      .parent = root,
+                                                      .layout {
+                                                          .size = layout::k_hug_contents,
+                                                          .contents_direction = layout::Direction::Column,
+                                                          .contents_align = layout::Alignment::Start,
+                                                      },
+                                                      .name = "knob-menu"_s,
+                                                  })
+                                          : root;
+                    DoParamContextMenu(g, menu, indices);
+                },
         });
 }
 

@@ -918,8 +918,17 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
         draw_handle(start_handle, start_id, HandleType::LoopStart, false);
         draw_handle(end_handle, end_id, HandleType::LoopEnd, false);
         if (draw_xfade) draw_handle(xfade_handle, xfade_id, HandleType::Xfade, draw_xfade_as_inactive);
+
+        if (layer.index == 0) {
+            g.imgui.RegisterNamedRect("waveform.loop-start-handle"_s, start_handle);
+            g.imgui.RegisterNamedRect("waveform.loop-end-handle"_s, end_handle);
+            if (draw_xfade) g.imgui.RegisterNamedRect("waveform.crossfade-handle"_s, xfade_handle);
+        }
     }
-    if (features.show_sample_offset) draw_handle(offs_handle, offs_imgui_id, HandleType::Offset, false);
+    if (features.show_sample_offset) {
+        draw_handle(offs_handle, offs_imgui_id, HandleType::Offset, false);
+        if (layer.index == 0) g.imgui.RegisterNamedRect("waveform.sample-start-handle"_s, offs_handle);
+    }
 
     // Text editor.
     if (g.param_text_editor_to_open) {

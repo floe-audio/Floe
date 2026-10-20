@@ -413,11 +413,30 @@ fn resolveTargets(b: *std.Build, user_given_target_presets: ?[]const u8) !std.Ar
 const linux_use_pkg_config = std.Build.Module.SystemLib.UsePkgConfig.yes;
 
 const gen_doc_screenshots_step_name = "script:gen-doc-screenshots";
+const generate_manual_step_name = "script:generate-manual";
+
+// Where screenshots rendered from -Dscreenshot-presets go. The folder's name is also their URL path in the manual
+// build of the site.
+const manual_screenshots_dir = "website/build-manual-screenshots/manual-screenshots";
 
 pub fn build(b: *std.Build) void {
     b.reference_trace = 10; // Improve debugging of build.zig itself.
 
     std_extras.loadEnvFile(b.build_root.handle, &b.graph.env_map) catch {};
+
+    // Another folder with the same layout can replace website/screenshot-presets, for example one whose presets
+    // use a particular sample library. Screenshots that don't use a preset are skipped then, since they'd be the
+    // same as the website's. Each screenshot then runs in a fresh FLOE_HOME so nothing installed on this machine
+    // shows up; the folder's optional floe.ini becomes its preferences, with scan folder paths relative to the
+    // folder.
+    const screenshot_presets = b.option(
+        []const u8,
+        "screenshot-presets",
+        "Folder of screenshot presets to use instead of website/screenshot-presets. The screenshots go to " ++
+            manual_screenshots_dir ++ ", and " ++ generate_manual_step_name ++ " renders and uses them.",
+    );
+    const rendering_doc_screenshots = std_extras.isStepRequested(b, gen_doc_screenshots_step_name) or
+        (screenshot_presets != null and std_extras.isStepRequested(b, generate_manual_step_name));
 
     // IMPORTANT: if you add options here, you may need to also update the config_hash computation below.
     const options: Options = .{
@@ -444,7 +463,7 @@ pub fn build(b: *std.Build) void {
             bool,
             "fetch-floe-logos",
             "Fetch Floe logos from online - these may have a different licence to the rest of Floe",
-        ) orelse false) or std_extras.isStepRequested(b, gen_doc_screenshots_step_name),
+        ) orelse false) or rendering_doc_screenshots,
         .no_runtime_safety_checks = b.option(
             bool,
             "no-runtime-safety-checks",
@@ -453,7 +472,7 @@ pub fn build(b: *std.Build) void {
         .include_git_hash = b.option(
             bool,
             "include-git-hash",
-            "Include the git commit hash in the version string as semver build metadata. Default is true if not production build.",
+            "Include the git commit hash in the version string as semver build metadata. Default is true if not production build, unless generating doc screenshots.",
         ),
         .use_system_pluginval = b.option(
             bool,
@@ -466,13 +485,14 @@ pub fn build(b: *std.Build) void {
             "Use the bgfx GUI renderer rather than OpenGL/Direct3D 9",
         ) orelse true,
         .targets = b.option([]const u8, "targets", "Target operating system"),
+        .screenshot_presets = screenshot_presets,
     };
 
     const floe_version_string = blk: {
         var ver: []const u8 = b.build_root.handle.readFileAlloc(b.allocator, "version.txt", 256) catch @panic("version.txt error");
         ver = std.mem.trim(u8, ver, " \r\n\t");
 
-        var include_git_hash = options.build_mode != .production;
+        var include_git_hash = options.build_mode != .production and !rendering_doc_screenshots;
         if (options.include_git_hash) |i| include_git_hash = i;
 
         if (include_git_hash) {
@@ -561,7 +581,9 @@ pub fn build(b: *std.Build) void {
         .website_gen = b.step("script:website-generate", "Generate the static JSON for the website"),
         .website_build = b.step("script:website-build", "Build the website"),
         .website_dev = b.step("script:website-dev", "Start website dev build locally"),
+        .generate_manual = b.step(generate_manual_step_name, "Generate a PDF user manual (Floe or a sample library) from the docs (options after --, see website/scripts/generate-manual.mjs)"),
         .website_promote = b.step("script:website-promote-beta-to-stable", "Promote the 'beta' documentation to be the latest stable version"),
+        .website_upload_assets = b.step("script:website-upload-assets", "Upload new website images/videos to assets.floe.audio and update the asset manifest (needs FLOE_ASSETS_* keys in the environment or .env)"),
         .remove_unused_gui_defs = b.step("script:remove-unused-gui-defs", "Remove unused size/colour-map entries from def files"),
         .update_copyright_years = b.step("script:update-copyright-years", "Update copyright years in source files based on git history"),
         .gen_doc_screenshots = b.step(gen_doc_screenshots_step_name, "Regenerate website screenshot PNGs by running floe-standalone for each known GUI area"),
@@ -760,12 +782,12 @@ pub fn build(b: *std.Build) void {
             top_level_steps.gen_distortion_table.dependOn(&copy.step);
         }
 
+        const npm_install = b.addSystemCommand(&.{ "npm", "install" });
+        npm_install.setCwd(b.path("website"));
+        npm_install.expectExitCode(0);
+
         // Build the site for production
         {
-            const npm_install = b.addSystemCommand(&.{ "npm", "install" });
-            npm_install.setCwd(b.path("website"));
-            npm_install.expectExitCode(0);
-
             const create_api = CreateWebsiteApiFiles.create(b);
 
             const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, "run docusaurus build");
@@ -780,10 +802,6 @@ pub fn build(b: *std.Build) void {
 
         // Start the website locally
         {
-            const npm_install = b.addSystemCommand(&.{ "npm", "install" });
-            npm_install.setCwd(b.path("website"));
-            npm_install.expectExitCode(0);
-
             const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, "run docusaurus start");
             run.addArgs(&.{ "npm", "run", "start" });
             run.setCwd(b.path("website"));
@@ -791,6 +809,32 @@ pub fn build(b: *std.Build) void {
             run.step.dependOn(&npm_install.step);
 
             top_level_steps.website_dev.dependOn(&run.step);
+        }
+
+        {
+            const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, "upload website assets");
+            run.addArgs(&.{ "node", "scripts/upload-assets.mjs" });
+            run.setCwd(b.path("website"));
+            run.expectExitCode(0);
+            top_level_steps.website_upload_assets.dependOn(&run.step);
+        }
+
+        // Generate the user manual. No cwd is set so that relative paths in the forwarded args
+        // resolve from where zig build was invoked.
+        {
+            const run = std_extras.createCommandWithStdoutToStderr(b, builtin.target, "generate manual");
+            run.addArg("node");
+            run.addFileArg(b.path("website/scripts/generate-manual.mjs"));
+            if (options.screenshot_presets != null) {
+                run.addArgs(&.{ "--screenshots-dir", b.pathFromRoot(manual_screenshots_dir) });
+                run.step.dependOn(top_level_steps.gen_doc_screenshots);
+            }
+            if (b.args) |args| run.addArgs(args);
+            run.step.dependOn(top_level_steps.website_gen);
+            run.step.dependOn(&npm_install.step);
+            run.expectExitCode(0);
+            run.has_side_effects = true;
+            top_level_steps.generate_manual.dependOn(&run.step);
         }
     }
 
@@ -3149,87 +3193,112 @@ fn doTarget(
         const installed = configure_binaries.installProcessedExecutable(exe, null);
         top_level_steps.install_bin.dependOn(installed.step);
 
-        if (targetCanRunNatively(cfg.target)) {
+        if (targetCanRunNatively(cfg.target)) doc_screenshots: {
             const screenshot_filter = ctx.b.option(
                 []const u8,
                 "screenshot-id",
                 "Only generate the screenshot whose output PNG stem matches this value (default: all)",
             );
+            const custom_presets_dir = options.screenshot_presets;
+            const presets_dir = custom_presets_dir orelse "website/screenshot-presets";
+            // Source trees without the website folder, such as the nix package's, can't generate doc screenshots.
+            if (custom_presets_dir == null) {
+                ctx.b.build_root.handle.access(presets_dir, .{}) catch break :doc_screenshots;
+            }
+            const out_dir = if (custom_presets_dir != null) manual_screenshots_dir else "website/static/images/screenshots";
+            // Each screenshot loads <presets dir>/<output stem>.floe-preset, or the only preset inside a
+            // <output stem>/ subfolder, unless no_preset is set, for screenshots that don't show anything from the
+            // preset.
             const DocScreenshot = struct {
                 id_name: []const u8,
-                preset: ?[]const u8 = null, // relative to test_files/presets
                 out_name: ?[]const u8 = null, // output filename stem; defaults to id_name
+                no_preset: bool = false,
                 chord: []const u8 = &.{}, // MIDI note numbers to hold as note-ons on channel 1
             };
             const doc_screenshots = [_]DocScreenshot{
-                .{ .id_name = "overview", .preset = "Drones/Faded Silhouettes.floe-preset" },
-                .{ .id_name = "top-panel", .preset = "Drones/Faded Silhouettes.floe-preset" },
-                .{ .id_name = "save-preset", .preset = "Drones/Faded Silhouettes.floe-preset" },
-                .{ .id_name = "layer-top-controls", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "layer-main", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "layer-playback", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "layer-playback-granular-speed", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "layer-playback-granular-fixed", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "layer-lfo", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "layer-eq", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "layer-arp", .preset = "arp-screenshot.floe-preset" },
-                .{ .id_name = "layer-config", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "layers", .preset = "Harp Trio.floe-preset" },
-                .{ .id_name = "perform", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "perform-variation-strip", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "effects", .preset = "Pads/Celestial Heights.floe-preset" },
-                .{ .id_name = "key-range-controls", .preset = "Real Dulcitone.floe-preset" },
-                .{ .id_name = "velocity-curve", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "loop-mode-menu", .preset = "Drones/Rumbler.floe-preset" },
-                .{ .id_name = "key-range-bars", .preset = "Real Dulcitone.floe-preset" },
-                .{ .id_name = "key-range-enlarged", .preset = "Real Dulcitone.floe-preset" },
-                .{ .id_name = "check-for-updates" },
+                .{ .id_name = "top-panel" },
+                .{ .id_name = "top-panel-overview" },
+                .{ .id_name = "main-menu", .no_preset = true },
+                .{ .id_name = "save-preset" },
+                .{ .id_name = "layer-top-controls" },
+                .{ .id_name = "layer-main" },
+                .{ .id_name = "layer-playback" },
+                .{ .id_name = "layer-playback-granular-fixed" },
+                .{ .id_name = "layer-lfo" },
+                .{ .id_name = "layer-eq" },
+                .{ .id_name = "layer-arp" },
+                .{ .id_name = "layer-config" },
+                .{ .id_name = "layer-tab-menu" },
+                .{ .id_name = "granular-controls" },
+                .{ .id_name = "granular-random" },
+                .{ .id_name = "granular-harmony" },
+                .{ .id_name = "granular-variation" },
+                .{ .id_name = "arp-step-settings" },
+                .{ .id_name = "arp-sequence" },
+                .{ .id_name = "arp-config" },
+                .{ .id_name = "arp-fixed-notes" },
+                .{ .id_name = "arp-sliced" },
+                .{ .id_name = "layers" },
+                .{ .id_name = "page-perform" },
+                .{ .id_name = "perform-tab-and-arrows" },
+                .{ .id_name = "page-layers" },
+                .{ .id_name = "page-effects" },
+                .{ .id_name = "knob" },
+                .{ .id_name = "knob-menu" },
+                .{ .id_name = "macros" },
+                .{ .id_name = "macros-play" },
+                .{ .id_name = "perform" },
+                .{ .id_name = "perform-variation-strip" },
+                .{ .id_name = "effects" },
+                .{ .id_name = "effect-distortion" },
+                .{ .id_name = "effect-bit-crush" },
+                .{ .id_name = "effect-compressor" },
+                .{ .id_name = "effect-filter" },
+                .{ .id_name = "effect-stereo-widen" },
+                .{ .id_name = "effect-chorus" },
+                .{ .id_name = "effect-reverb" },
+                .{ .id_name = "effect-delay" },
+                .{ .id_name = "effect-convolution-reverb" },
+                .{ .id_name = "effect-phaser" },
+                .{ .id_name = "effect-eq" },
+                .{ .id_name = "effect-limiter" },
+                .{ .id_name = "key-range-controls" },
+                .{ .id_name = "velocity-curve", .chord = &.{60} },
+                .{ .id_name = "loop-mode-menu" },
+                .{ .id_name = "looping" },
+                .{ .id_name = "key-range-bars" },
+                .{ .id_name = "key-range-enlarged" },
+                .{ .id_name = "keyboard", .chord = &.{ 48, 55, 64, 71 } },
+                .{ .id_name = "check-for-updates", .no_preset = true },
                 .{ .id_name = "update-indicator" },
-                .{ .id_name = "install-packages" },
-                .{ .id_name = "folders" },
-                .{ .id_name = "performance-controls", .preset = "Drones/Rumbler.mirage-wraith" },
-                .{ .id_name = "uninstall-preset-bank" },
-                .{ .id_name = "uninstall-library" },
+                .{ .id_name = "install-packages", .no_preset = true },
+                .{ .id_name = "folders", .no_preset = true },
+                .{ .id_name = "performance-controls", .no_preset = true },
+                .{ .id_name = "reproducibility", .no_preset = true },
+                .{ .id_name = "midi-cc", .no_preset = true },
+                .{ .id_name = "mpe", .no_preset = true },
+                .{ .id_name = "uninstall-preset-bank", .no_preset = true },
+                .{ .id_name = "uninstall-library", .no_preset = true },
                 .{ .id_name = "browser-full" },
                 .{ .id_name = "browser-menu" },
-                .{ .id_name = "browser-browse", .preset = "Drones/Faded Silhouettes.floe-preset" },
-                .{
-                    .id_name = "perform:full",
-                    .preset = "Risers/Caustic Build-up.floe-preset",
-                    .out_name = "floe-whole-gui-1",
-                },
-                .{
-                    .id_name = "layers:full",
-                    .preset = "Pads/Celestial Heights.floe-preset",
-                    .out_name = "floe-whole-gui-2",
-                    .chord = &.{60},
-                },
-                .{
-                    .id_name = "effects:full",
-                    .preset = "Risers/Caustic Build-up.floe-preset",
-                    .out_name = "floe-whole-gui-3",
-                },
-                .{
-                    .id_name = "perform:full",
-                    .preset = "Drones/Rumbler.floe-preset",
-                    .out_name = "floe-whole-gui-4",
-                },
-                .{
-                    .id_name = "layer-eq:full",
-                    .preset = "Drones/Faded Silhouettes.floe-preset",
-                    .out_name = "floe-whole-gui-5",
-                },
-                .{
-                    .id_name = "browser-full:full",
-                    .preset = "Drones/Faded Silhouettes.floe-preset",
-                    .out_name = "floe-whole-gui-6",
-                },
-                .{
-                    .id_name = "folders:full",
-                    .preset = "Drones/Rumbler.floe-preset",
-                    .out_name = "floe-whole-gui-7",
-                },
+                .{ .id_name = "browser-browse" },
+                .{ .id_name = "preset-browser" },
+                .{ .id_name = "perform:full", .out_name = "floe-whole-gui-1" },
+                .{ .id_name = "layers:full", .out_name = "floe-whole-gui-2", .chord = &.{60} },
+                .{ .id_name = "effects:full", .out_name = "floe-whole-gui-3" },
+                .{ .id_name = "perform:full", .out_name = "floe-whole-gui-4" },
+                .{ .id_name = "layer-eq:full", .out_name = "floe-whole-gui-5" },
+                .{ .id_name = "browser-full:full", .out_name = "floe-whole-gui-6" },
+                .{ .id_name = "folders:full", .out_name = "floe-whole-gui-7" },
             };
+
+            const real_home: ?[]const u8 = if (custom_presets_dir == null) realFloeHome(ctx.b) else null;
+            const isolated_prefs =
+                if (custom_presets_dir) |dir| screenshotPrefs(ctx.b, dir) else websiteScreenshotPrefs(ctx.b, real_home.?);
+            if (custom_presets_dir != null) {
+                ctx.b.build_root.handle.makePath(out_dir) catch |err|
+                    std.debug.panic("Failed to create {s}: {s}", .{ out_dir, @errorName(err) });
+            }
 
             var matched_any = false;
             for (doc_screenshots) |shot| {
@@ -3238,20 +3307,25 @@ fn doTarget(
                     if (!std.mem.eql(u8, filter, out_stem)) continue;
                 }
                 matched_any = true;
-                const out_path = ctx.b.fmt("website/static/images/screenshots/{s}.png", .{out_stem});
+                if (shot.no_preset and custom_presets_dir != null) continue;
+                const out_path = ctx.b.pathFromRoot(ctx.b.fmt("{s}/{s}.png", .{ out_dir, out_stem }));
                 const run = ctx.b.addRunArtifact(exe);
                 run.has_side_effects = true;
                 run.addArg(ctx.b.fmt("--screenshot={s}", .{shot.id_name}));
                 run.addArg(ctx.b.fmt("--screenshot-out={s}", .{out_path}));
-                if (shot.preset) |preset| {
-                    const preset_path = ctx.b.pathJoin(&.{
-                        ctx.b.build_root.path orelse ".",
-                        "test_files",
-                        "presets",
-                        preset,
-                    });
-                    run.addArg(ctx.b.fmt("--preset={s}", .{preset_path}));
+                if (!shot.no_preset) {
+                    const preset_path = docScreenshotPresetPath(ctx.b, presets_dir, out_stem);
+                    run.addPrefixedFileArg(
+                        "--preset=",
+                        if (std.fs.path.isAbsolute(preset_path))
+                            .{ .cwd_relative = preset_path }
+                        else
+                            ctx.b.path(preset_path),
+                    );
                 }
+                const home = ScreenshotFloeHome.create(ctx.b, out_stem, isolated_prefs, real_home);
+                run.step.dependOn(&home.step);
+                run.setEnvironmentVariable("FLOE_HOME", home.path);
                 run.addArg("--fixed-window-size=1800");
                 run.addArg("--log-level=warning");
                 if (shot.chord.len != 0) {
@@ -3886,6 +3960,140 @@ fn addWindowsEmbedInfo(step: *std.Build.Step.Compile, info: struct {
 fn targetCanRunNatively(target: std.Target) bool {
     return target.cpu.arch == builtin.cpu.arch and target.os.tag == builtin.os.tag;
 }
+
+// Returns <presets_dir>/<stem>.floe-preset, or else the single .floe-preset anywhere inside <presets_dir>/<stem>/.
+// Floe displays the preset's file name and parent folder, so the subfolder form lets a screenshot show a real
+// preset name such as "Drones/Faded Silhouettes".
+fn docScreenshotPresetPath(b: *std.Build, presets_dir: []const u8, stem: []const u8) []const u8 {
+    const flat_path = b.fmt("{s}/{s}.floe-preset", .{ presets_dir, stem });
+    if (b.build_root.handle.access(flat_path, .{})) |_| return flat_path else |_| {}
+
+    const subfolder_path = b.fmt("{s}/{s}", .{ presets_dir, stem });
+    var subfolder = b.build_root.handle.openDir(subfolder_path, .{ .iterate = true }) catch
+        std.debug.panic("No screenshot preset: expected {s} or a {s}/ folder", .{ flat_path, subfolder_path });
+    defer subfolder.close();
+    var walker = subfolder.walk(b.allocator) catch @panic("OOM");
+    defer walker.deinit();
+    var found: ?[]const u8 = null;
+    while (walker.next() catch |err| std.debug.panic("Failed to read {s}/: {s}", .{ subfolder_path, @errorName(err) })) |entry| {
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.basename, ".floe-preset")) continue;
+        if (found != null) std.debug.panic("More than one .floe-preset inside {s}/", .{subfolder_path});
+        found = b.pathJoin(&.{ subfolder_path, entry.path });
+    }
+    return found orelse std.debug.panic("No .floe-preset inside {s}/", .{subfolder_path});
+}
+
+// The presets folder's floe.ini (empty if there's none), with its scan folder paths made absolute.
+fn screenshotPrefs(b: *std.Build, presets_dir: []const u8) []const u8 {
+    const ini_path = b.pathJoin(&.{ presets_dir, "floe.ini" });
+    const ini = b.build_root.handle.readFileAlloc(b.allocator, ini_path, 1024 * 1024) catch |err| switch (err) {
+        error.FileNotFound => return "",
+        else => std.debug.panic("Failed to read {s}: {s}", .{ ini_path, @errorName(err) }),
+    };
+    const abs_presets_dir = b.build_root.handle.realpathAlloc(b.allocator, presets_dir) catch |err|
+        std.debug.panic("Failed to resolve {s}: {s}", .{ presets_dir, @errorName(err) });
+
+    var result = std.ArrayList(u8).init(b.allocator);
+    var lines = std.mem.splitScalar(u8, ini, '\n');
+    while (lines.next()) |raw_line| {
+        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const equals = std.mem.indexOfScalar(u8, line, '=') orelse {
+            result.writer().print("{s}\n", .{line}) catch @panic("OOM");
+            continue;
+        };
+        const key = std.mem.trim(u8, line[0..equals], " \t");
+        const value = std.mem.trim(u8, line[equals + 1 ..], " \t");
+        if (std.mem.eql(u8, key, "extra-libraries-folder") or std.mem.eql(u8, key, "extra-presets-folder")) {
+            const abs_value = std.fs.path.resolve(b.allocator, &.{ abs_presets_dir, value }) catch @panic("OOM");
+            result.writer().print("{s} = {s}\n", .{ key, abs_value }) catch @panic("OOM");
+        } else {
+            result.writer().print("{s}\n", .{line}) catch @panic("OOM");
+        }
+    }
+    return result.items;
+}
+
+// The real Floe folder, as listed in website/docs/installation/file-locations.mdx. FLOE_HOME uses the same layout.
+fn realFloeHome(b: *std.Build) []const u8 {
+    if (b.graph.env_map.get("FLOE_HOME")) |home| return home;
+    const root = switch (builtin.os.tag) {
+        .linux => b.graph.env_map.get("HOME") orelse @panic("HOME is not set"),
+        .macos => "/Users/Shared",
+        .windows => b.graph.env_map.get("PUBLIC") orelse "C:\\Users\\Public",
+        else => @panic("Unsupported OS for doc screenshots"),
+    };
+    return b.pathJoin(&.{ root, "Floe" });
+}
+
+// Website screenshots see the real extra scan folders plus the test libraries, but none of the real preferences,
+// so personal settings can't change how they look. The real default folders are linked in by
+// ScreenshotFloeHome: as extra folders, the preset browser groups their banks differently.
+fn websiteScreenshotPrefs(b: *std.Build, home: []const u8) []const u8 {
+    var result = std.ArrayList(u8).init(b.allocator);
+    const writer = result.writer();
+    writer.print("extra-libraries-folder = {s}\n", .{b.pathFromRoot("test_files/libraries")}) catch @panic("OOM");
+
+    const ini_path = b.pathJoin(&.{ home, "Preferences", "floe.ini" });
+    const ini = std.fs.cwd().readFileAlloc(b.allocator, ini_path, 1024 * 1024) catch |err| switch (err) {
+        error.FileNotFound => return result.items,
+        else => std.debug.panic("Failed to read {s}: {s}", .{ ini_path, @errorName(err) }),
+    };
+    var lines = std.mem.splitScalar(u8, ini, '\n');
+    while (lines.next()) |raw_line| {
+        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const equals = std.mem.indexOfScalar(u8, line, '=') orelse continue;
+        const key = std.mem.trim(u8, line[0..equals], " \t");
+        if (std.mem.eql(u8, key, "extra-libraries-folder") or std.mem.eql(u8, key, "extra-presets-folder"))
+            writer.print("{s}\n", .{line}) catch @panic("OOM");
+    }
+    return result.items;
+}
+
+// An empty FLOE_HOME for one screenshot, recreated on every run so earlier runs leave no state behind. If
+// default_folders_from is set, its Libraries and Presets folders are symlinked in as the default folders.
+const ScreenshotFloeHome = struct {
+    step: std.Build.Step,
+    path: []const u8,
+    prefs: []const u8,
+    default_folders_from: ?[]const u8,
+
+    fn create(b: *std.Build, name: []const u8, prefs: []const u8, default_folders_from: ?[]const u8) *ScreenshotFloeHome {
+        const cache_root = b.cache_root.handle.realpathAlloc(b.allocator, ".") catch |err|
+            std.debug.panic("Failed to resolve the cache folder: {s}", .{@errorName(err)});
+        const self = b.allocator.create(ScreenshotFloeHome) catch @panic("OOM");
+        self.* = .{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = b.fmt("Make FLOE_HOME for {s}", .{name}),
+                .owner = b,
+                .makeFn = make,
+            }),
+            // Named Floe, like a real home, since some screenshots show its folder paths.
+            .path = b.pathJoin(&.{ cache_root, "screenshot-floe-homes", name, "Floe" }),
+            .prefs = prefs,
+            .default_folders_from = default_folders_from,
+        };
+        return self;
+    }
+
+    fn make(step: *std.Build.Step, make_options: std.Build.Step.MakeOptions) !void {
+        _ = make_options;
+        const self: *ScreenshotFloeHome = @fieldParentPtr("step", step);
+        try std.fs.cwd().deleteTree(self.path);
+        var prefs_dir = try std.fs.cwd().makeOpenPath(step.owner.pathJoin(&.{ self.path, "Preferences" }), .{});
+        defer prefs_dir.close();
+        if (self.prefs.len != 0) try prefs_dir.writeFile(.{ .sub_path = "floe.ini", .data = self.prefs });
+        if (self.default_folders_from) |real_home| {
+            for ([_][]const u8{ "Libraries", "Presets" }) |folder| {
+                try std.fs.cwd().symLink(
+                    step.owner.pathJoin(&.{ real_home, folder }),
+                    step.owner.pathJoin(&.{ self.path, folder }),
+                    .{ .is_directory = true },
+                );
+            }
+        }
+    }
+};
 
 const CreateWebsiteApiFiles = struct {
     step: std.Build.Step,

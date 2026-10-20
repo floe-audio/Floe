@@ -419,6 +419,16 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
             auto const r = builder.imgui.RegisterAndConvertRect(*rel_r);
             builder.imgui.RegisterRectForMouseTracking(r, false);
 
+            if (macro_index == 0 && dests.Size()) {
+                auto const num_dests = (f32)dests.Size();
+                builder.imgui.RegisterNamedRect(
+                    "macros.first-destinations"_s,
+                    {.xywh {r.x,
+                            r.y,
+                            (num_dests * dest_knob_size_px) + ((num_dests - 1) * dest_knob_gap_x_px),
+                            dest_knob_size_px}});
+            }
+
             for (auto const dest_knob_index : Range(CheckedCast<u8>(dests.Size()))) {
                 auto& dest = dests.items[dest_knob_index];
 
@@ -800,6 +810,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
                 };
 
                 auto const imgui_id = builder.imgui.MakeId("add-destination-button"_s);
+                if (macro_index == 0) builder.imgui.RegisterNamedRect("macros.first-add-button"_s, knob_r);
 
                 Tooltip(
                     g,
@@ -897,6 +908,7 @@ void DoMacrosEditGui(GuiState& g, Box const& parent) {
 
         if (auto const r = BoxRect(builder, name_input)) {
             auto const window_r = builder.imgui.RegisterAndConvertRect(*r);
+            if (macro_index == 0) builder.imgui.RegisterNamedRect("macros.first-name"_s, window_r);
             auto const result = builder.imgui.TextInputBehaviour({
                 .rect_in_window_coords = window_r,
                 .id = name_input.imgui_id,

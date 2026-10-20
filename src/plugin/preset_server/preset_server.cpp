@@ -1482,7 +1482,7 @@ TEST_CASE(TestPresetServer) {
         auto const [snapshot, handle] = BeginReadFolders(server, tester.scratch_arena);
         DEFER { EndReadFolders(server, handle); };
 
-        CHECK_EQ(snapshot.folders.size, 4u); // root + Drones, Pads, Risers
+        CHECK_EQ(snapshot.folders.size, 1u);
         CHECK_EQ(snapshot.banks.size, 1u);
 
         auto const& bank_listing = REQUIRE_DEREF(snapshot.banks[0]);
