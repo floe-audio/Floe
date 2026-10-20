@@ -10,46 +10,65 @@ SPDX-FileCopyrightText: 2026 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
-Reproducibility settings live in the [Performance Controls](./performance-controls) panel.
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+import LibraryFeature from '@site/src/components/LibraryFeature';
 
-## At a glance
+Some features, most noticeably granular synthesis and the random LFO shapes, are designed around randomness to make the sound more natural and lively. Normally you don't need to worry about reproducibility: Floe's default setting, _Reset on transport_, covers most uses by making every render of your track in your DAW come out exactly the same. But sometimes those choices aren't quite what you want, such as grains landing in the wrong places or a random LFO moving the wrong way at a key moment. For that, Floe has _seed_ settings that let you take more control.
 
-1. Reset on transport is on by default, so every DAW render of your track already comes out the same.
-2. For finer-grained control within a render, set a Reset keyswitch — a MIDI note that restarts the variation wherever you send it (for example, before each MIDI pattern).
-3. Pick a Seed to choose which variation plays back; the same seed always produces the same performance.
+To understand what a seed does, it helps to know that Floe's randomness isn't truly random. It comes from a sequence of numbers that looks random. The sequence is so long that it never comes round again in practice, but it's fixed: from the same starting point, it always unfolds the same way. The seed is that starting point. So you keep all the spontaneity of random choices, but the same seed always gives the same choices.
 
-## Background
+Floe goes back to the start of the seed's sequence only at certain moments, called resets. You choose when they happen, and which seed to use, on the _Reproducibility_ tab of the [Performance Controls](./performance-controls) panel:
 
-Floe has several elements that vary between performances, including:
+<GeneratedScreenshot name="reproducibility" alt="Reproducibility tab of the Performance Controls panel, with its settings numbered" />
 
-- Round robin sample selection
-- The granular engine's randomised grain properties
-- The LFO's random waveforms (Random Steps and Random Glide)
-- Other smaller sources of variation throughout the engine
+1. **Reset on transport** — reset whenever you press play or start a render in your DAW. Play your track from the top twice and you hear exactly the same thing both times. It's on by default.
+1. **Reset keyswitch** — reset whenever Floe receives the MIDI note you choose here. Put that note in your MIDI just before a section, and that section plays back identically every time, wherever you start playback from. The keyswitch note makes no sound, and it's shown as a blue marker on the on-screen keyboard.
+1. **Seed** — which sequence Floe starts from. Change it to hear a different take, just as lively as the last and just as repeatable.
 
-Left alone, these would drift between plays. The Reproducibility tab is where you control them.
+You can use either kind of reset, or both.
 
-## How it works
+The _Seed_ also covers these smaller sources of variation:
 
-Although the variation feels random as you play, it actually follows a fixed sequence behind the scenes — round robins step through their samples in a set order, and the randomised elements are drawn from a fixed sequence too. Given the same notes and settings, Floe will always produce the same result, as long as it knows where to begin.
+- The arpeggiator's _Humanise_ and random note orders
+<LibraryFeature has="round-robins">
+- Which round robin sample plays first after a reset
+</LibraryFeature>
+- The _White Noise_ Instruments
 
-By "the same notes" we mean every detail of how they're played: order, timing, length, and velocity all count. Any change between one play and the next sends the variation down a different path from that moment on.
+## Workflow
 
-So to get a repeatable performance, you put a marker in the sand: a moment that tells Floe "start every variation sequence from here." Every time you hit that marker, Floe rewinds to the same starting point, and the performance that follows will be identical.
+The _Seed_ settings are a finishing step. You choose a seed once your MIDI is recorded and you're getting ready to render, rather than while you're improvising.
 
-## Placing the marker
+There's one _Seed_ for the whole instance of Floe, and every random choice Floe makes moves its sequence along. So each choice affects all the choices that come after it. That's why it's important to ensure that you play the exact same notes with the exact same timing. A saved MIDI item in your DAW ensures this.
 
-Floe gives you two ways to set the marker — use either, or both at once. The difference is how fine-grained the control is.
+### With _Reset on transport_
 
-- Reset on transport — the marker is placed each time the DAW transport starts playing. Enabled by default. There's only one moment of control (the start of playback), but it's enough to make every render of your track come out the same.
-- Reset keyswitch — a MIDI note that places the marker whenever you send it. Drop a keyswitch before each MIDI pattern and the variation restarts at every one of them, giving you fine-grained control over where reproducibility kicks in. The note itself is consumed and does not trigger any sound. Shown as a blue marker on the on-screen keyboard.
+This is the default. Floe starts from the _Seed_ whenever you press play or render, so everything from that point on comes out the same every time.
 
-## Seed
+To judge a seed properly, render the whole track again, or play it from the very start. It won't sound the same if you start playback in the middle of a MIDI item, or between MIDI items played by the same instance of Floe, because Floe needs to make all the same choices from start to finish, not starting in the middle.
 
-The seed is a number that picks the starting point for Floe's variation. Each seed gives a different round robin starting position and a different sequence of randomised choices — and the same seed always reproduces the same performance. To explore alternatives, change the seed and replay the same notes; you'll hear a different result that is itself fully reproducible.
+So the workflow is:
+
+1. Render your track, or play it from the very start.
+2. If something isn't quite right, change the _Seed_.
+3. Render again and listen, repeating until you have a take you like.
+
+If Floe only plays in one part of your track, you don't need to go right back to the start. Anywhere before Floe's first note works just as well, since Floe hasn't made any choices before then.
+
+### With _Reset keyswitch_
+
+A _Reset keyswitch_ lets you lock in a performance with more granularity. Floe starts again from the _Seed_ every time the keyswitch note plays, so everything after it comes out the same no matter where you started playback or what Floe played before. You can add several of these lock-in points through your track, allowing you to audition the section after each one by starting playback just before its keyswitch.
+
+This also suits looping a section: put the keyswitch at the start of the loop. A DAW loop jumping back to its start doesn't count as pressing play, so without the keyswitch each pass carries on from where the last one left off.
+
+The catch is that every keyswitch uses the same _Seed_. If you change the seed to get a better take of one section, every other section that follows a keyswitch changes too. If a seed suits one section of your track but not another, load a second instance of Floe for that section and give it its own seed.
+
+### Per-layer seeds instead
+
+The [granular engine](./playback-tab#variation) and the LFO's [random shapes](./lfo-tab) offer an alternative to all of this: a per-layer seed <FAIcon icon="fa-solid fa-seedling" />, saved with the preset. Rather than waiting for a reset, it applies every time a note starts, so each note gets its own sequence. Choose one of the _Identical_ modes and try a few _Seed_ values until you like the result. It then sounds exactly the same on any computer, in any instance of Floe, without needing any of the settings above. Unlike the instance's _Seed_, it's a sound-design setting you can choose at any time.
 
 ## Tips
 
-- Reproducibility runs forwards, not backwards. If you're improvising and a particular take sounds great, there's no way to recapture the variation you just heard — Floe doesn't record the path it took. Decide on the part first, then audition seeds against it until you find one that fits.
-- Like the rest of the [Performance Controls](./performance-controls) panel, these settings belong to this specific instance and loading a preset leaves them untouched — so you can audition presets without losing your reproducibility setup.
-- A single instance only has one seed, so every marker hit within that instance uses the same one. If a seed sounds great under one section of your track but wrong under another, you can either hunt for a seed that works across all your reset points, or load a second instance of Floe for the section that needs its own variation.
+- Floe can't recapture a variation after the fact. If an improvised take sounds great, the random choices behind it are gone. Record the MIDI first, then try seeds against it.
+- Performance Controls settings belong to the instance, so loading a preset leaves them untouched: you can try out presets without losing your seed and reset setup.
+- When designing a granular sound, try _Identical on all notes_ with a low _Density_ and step through a few _Seed_ values.

@@ -1,6 +1,5 @@
 ---
 id: quick-start-guide
-manual_exclude: [library]
 title: Quick Start Guide
 hide_table_of_contents: true
 ---
@@ -10,48 +9,101 @@ SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
-Get up and running with Floe in just a few simple steps.
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+import LibraryFeature from '@site/src/components/LibraryFeature';
+import LibraryInsert from '@site/src/components/LibraryInsert';
+import LibraryName from '@site/src/components/LibraryName';
+import ManualExclude from '@site/src/components/ManualExclude';
+import ManualOnly from '@site/src/components/ManualOnly';
+
+<ManualExclude types={['library']}>
 
 ## Before you start
 
-Floe is an **engine** — it's empty without sample libraries.
+Floe is an engine — empty without sample libraries. Libraries and their presets come in files called _Floe packages_. If you've bought a library, you'll usually download its package from the developer's website, or find a link in your email.
 
-If you already have packages (perhaps sent to your email), jump below to _Setting up Floe_. Otherwise, browse the [packages](/packages) page first to discover free and paid options.
+If you don't have any packages yet, browse the [packages](/packages) page to discover free and paid libraries.
 
-## Setting up Floe
+</ManualExclude>
 
-1. **[Download Floe](/download)** and install it on your computer.
-1. **Download your packages** of your choice.
-1. **Open your DAW**.
-1. **Add the Floe plugin** - often found as a 'virtual instrument' under 'Floe Audio' in your plugin list.
-1. **[Install your packages](../installation/install-packages)** by opening the Floe's Preferences <FAIcon icon="fa-solid fa-cog" /> and clicking the **Install package** button.
-1. **Select your downloaded package** file(s). After a few moments, your libraries and presets will be available to use.
+## Install Floe and <ManualExclude types={['library']}>your packages</ManualExclude><ManualOnly types={['library']}><LibraryName /></ManualOnly>
 
-## Load a preset
+1. **Download Floe** from [floe.audio/download](https://floe.audio/download) and run the installer for your computer. See [Install Floe](../installation/install-floe.mdx) if you need more detail.
+1. <LibraryInsert slot="package-download"><ManualExclude types={['library']}>**Download your packages.**</ManualExclude><ManualOnly types={['library']}>**Download the <LibraryName /> package.**</ManualOnly></LibraryInsert>
+1. **Open your DAW** and add Floe to an instrument track. It's usually listed as a virtual instrument under _Floe Audio_.
+1. **Open Floe's preferences** by clicking <FAIcon icon="fa-solid fa-cog" /> in the top panel, then choose the _Packages_ tab.
+1. **Click _Install package_** and select your package file.<ManualExclude types={['library']}> You can select several at once.</ManualExclude>
 
-Now, let's make some sound:
+<GeneratedScreenshot name="install-packages" alt="The Packages tab of Floe's preferences, with the Install package button" />
+{ /**/}
+<ManualExclude types={['library']}>
+Some packages, often paid ones, need unlocking: Floe asks for the license key that came with your purchase.
+</ManualExclude>
+<ManualOnly types={['library']}>
+<LibraryFeature has="encrypted-package">
+Floe asks for your license key to unlock <LibraryName /> as it installs.
+</LibraryFeature>
+</ManualOnly>
 
-1. **Open the preset browser** by clicking the preset name at the top of Floe's window.
-1. **Choose a preset** by clicking on one from the list on the right.
-1. **Play some notes** on your MIDI keyboard or DAW piano roll.
-1. **Close the preset browser** using the <FAIcon icon="fa-solid fa-xmark" /> button or clicking outside the browser.
+When the installation finishes, Floe shows a summary. Once you click _Done_, <ManualExclude types={['library']}>your libraries and presets are</ManualExclude><ManualOnly types={['library']}><LibraryName /> and its presets are</ManualOnly> ready to use. There's no need to restart anything.
 
-## Change an instrument
+You can delete the package <ManualExclude types={['library']}>files</ManualExclude><ManualOnly types={['library']}>file</ManualOnly> afterwards; Floe doesn't need <ManualExclude types={['library']}>them</ManualExclude><ManualOnly types={['library']}>it</ManualOnly> anymore. If you want to install to a different drive, or want more details, have a look at [<ManualExclude types={['library']}>Install Packages</ManualExclude><ManualOnly types={['library']}>Install <LibraryName /> Package</ManualOnly>](../installation/install-packages).
 
-A _Preset_ is a full production-ready setup of all of Floe's sounds and parameters.
+<div className="manual-page-break" />
 
-An _Instrument_ on the other hand, is a single sound-generator within Floe. These are loaded into any of Floe's 3 layers.
+## Play your first preset
 
-Instruments are the building blocks in Floe. Sometimes an instrument is a single sample, sometimes it's a detailed multi-sampled emulation of a real instrument.
+If the plugin was empty when you installed the package, it will have already loaded one of <LibraryName>the library</LibraryName>'s presets for you — begin playing some notes on your MIDI controller.
 
-1. **Open the instrument browser** by clicking the instrument name in the layer you want to change. An instrument name might be something like *Xylophone* or *Analog Pad*.
-1. **Choose an instrument** by clicking on one from the list on the right.
-1. **Play some notes** on your MIDI keyboard or DAW piano roll and notice how the sound has changed.
+### Try some presets
 
-<div style={{marginBottom: '4em'}}></div>
+<GeneratedScreenshot name="perform-tab-and-arrows" alt="The top of Floe's window, with the PERFORM tab and the preset arrows numbered" />
 
-:::note
+1. Click the PERFORM tab button near the top of <LibraryName>Floe</LibraryName>'s UI.
+1. Use the large arrow buttons, <FAIcon icon="fa-solid fa-caret-left" /> and <FAIcon icon="fa-solid fa-caret-right" />, to step through presets.
 
-Floe is continuously improving. Share your feedback or feature ideas on GitHub, forums or via email.
+### Explore the <ManualOnly types={['library']}>preset categories</ManualOnly><ManualExclude types={['library']}>presets</ManualExclude>
 
-:::
+<GeneratedScreenshot name="preset-browser" alt="The preset browser, open beneath the outlined preset box" />
+
+<ManualOnly types={['library']}>
+1. Open the preset browser by clicking the preset's name in the top panel.
+1. Click Factory Preset Banks, then <LibraryName /> - Factory Presets.
+1. Click a preset in the list on the left to load it.
+1. Close the browser by moving the mouse away from it, clicking outside it, or pressing `escape`.
+</ManualOnly>
+<ManualExclude types={['library']}>
+1. Open the preset browser by clicking the preset's name in the top panel.
+1. Click a preset in the list on the left to load it. Narrow down the list using the right panel.
+1. Close the browser by moving the mouse away from it, clicking outside it, or pressing `escape`.
+</ManualExclude>
+
+## Finding your way around
+
+### Tooltips
+
+If you hover over a control for a moment, a tooltip pops up explaining what it does. They go well beyond naming the control: each one tells you how it behaves and what's worth knowing about it. When you're not sure what something does, a tooltip is usually the quickest way to find out. If you'd rather not see them, turn off _Show tooltips_ in the <FAIcon icon="fa-solid fa-cog" /> preferences.
+
+### Using the controls
+
+Knobs and sliders all work the same way: drag up or right to increase the value, hold `shift` for finer control, and double-click to type an exact value. Right-click a control, or a whole section such as a layer's tab or an effect, for more options like copy and paste, resetting and MIDI CC Learn. See [Controls](../usage/controls) for the full details.
+
+### Window size
+
+To make the window bigger or smaller, drag its bottom-right corner. In some DAWs, such as Logic Pro, you need to grab this exact corner of <LibraryName>Floe</LibraryName> rather than the corner of the DAW's window around it.
+
+### Some terminology
+
+A few words come up often in this manual. We mean something specific when we use them:
+
+- **Preset** — a complete, saved sound, with its own name, description and tags.
+- **Layer** — one of the three sound layers that this engine revolves around. See them side by side on the LAYERS page.
+- **Instrument** — the sound source that a layer plays. It might be a single sample or many samples spread across the keyboard.
+
+### The three main pages
+
+Most of your time in <LibraryName>Floe</LibraryName> is spent on its three main pages. In future chapters we'll cover them in full detail:
+
+- [**Perform**](../usage/perform) — a distraction-free view for exploring presets and making quick changes. The easiest place to start with <LibraryName>Floe</LibraryName>.
+- [**Layers**](../usage/layers) — the three layers and their Instruments, each with its detailed controls.
+- [**Effects**](../usage/effects) — the effects rack that colours the whole sound.

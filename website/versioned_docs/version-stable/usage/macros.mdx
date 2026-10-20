@@ -2,7 +2,7 @@
 id: macros
 title: Macros
 hide_table_of_contents: true
-description: Learn how to use macros in Floe to control multiple parameters with a single knob
+description: Shape a sound with knobs that move several controls at once, and make your own
 ---
 
 {/*
@@ -10,79 +10,104 @@ SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
-## At a glance
-- Control multiple parameters at once with a single knob.
-- 4 macros available, each controlling up to 6 parameters.
-- Perfect for expressive performance and creating custom controls.
-- Found in the bottom panel: Play tab for performance, Macros tab for editing.
+import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+import ManualExclude from '@site/src/components/ManualExclude';
 
-## What are macros?
+A macro is a knob that moves other controls for you. Floe has four of them, and each can be linked to up to six controls anywhere in Floe, each by its own amount.
 
-Macros are powerful controls that let you move multiple parameters simultaneously with a single knob turn. Think of them as custom controls that you design to fit your musical needs. Instead of tweaking multiple knobs separately, you can create a macro that adjusts filter cutoff, reverb amount, and delay feedback all at once — perfect for dramatic breakdowns or smooth transitions.
+<GeneratedScreenshot name="macros-play" alt="The four macro knobs in the bottom panel, each named for what it does in the preset" />
 
-Floe provides 4 macros, and each macro can control up to 6 different parameters. This gives you tremendous flexibility to create expressive, performance-ready controls that transform your sounds in musical ways.
+Preset authors use macros in two main ways. Sometimes a macro simply brings forward one control that matters a lot for this particular sound, tuned to a useful range, so you don't have to go looking for it. Other times it moves several controls together to create something that feels like a brand-new control made for the preset. A macro called _Surge_ might push up a distortion's drive, open a low-pass filter and thicken a granular texture, all with one turn.
 
-## Setting up macros
+Each macro has a name, chosen by whoever made the preset, that hints at what it does. Not every preset uses all four.
+
+## Playing with macros
+
+The macro knobs appear on the [_Perform_](./perform) page, and on the _PLAY_ tab of the bottom panel when you're on the [_Layers_](./layers) or [_Effects_](./effects) page. They're the same four knobs in both places. A greyed-out macro isn't linked to anything, so it does nothing.
+
+Your MIDI keyboard's mod wheel is linked to the first macro, so you can shape the sound as you play. You can change this, and link the other macros to knobs or faders on your controller, in the [Performance Controls](./performance-controls) panel. Macros are also handy for automation in your DAW: one lane can move several controls at once.
+
+When a macro moves a knob, the knob's coloured arc separates from its dial. The dial shows the knob's own setting; the arc shows the value you actually hear. See [Controls](./controls).
+
+## Making your own macros
+
+Macros aren't only for preset authors. Once you're comfortable designing your own sounds, a macro or two can give your own presets a few expressive controls that shape the sound exactly the way you want, ready for your MIDI controller or DAW automation. The first macro is a good one to start with, since your mod wheel already moves it.
+
+To set up macros, go to the _Layers_ or _Effects_ page and click the _MACROS_ tab on the left of the bottom panel. Each macro's knob is shown alongside its settings.
+
+<GeneratedScreenshot name="macros" alt="The MACROS tab of the bottom panel, showing the first macro with its parts numbered" />
+
+1. **Destination knobs** — one blue knob for each control the macro is linked to, setting how far the macro moves it.
+1. **Add destination** — link another control to the macro.
+1. **Name** — click to rename the macro.
+
+<ManualExclude types={['floe', 'library']}>
 
 <video width="60%" controls>
   <source src="/images/macros-workflow.mp4" type="video/mp4" />
   Your browser does not support the video tag.
 </video>
 
-*Complete workflow: creating macro destinations, adjusting amounts, and renaming*
+_Linking controls, setting their amounts, and renaming a macro_
 
-### Creating a macro destination
+</ManualExclude>
 
-1. Navigate to the **Macros tab** in the bottom panel
-2. Hover your mouse over any macro knob — a **plus icon** will appear
-3. Click the plus icon to enter **destination selection mode**
-4. All automatable parameters in Floe will now show plus icons
-5. Click on any highlighted parameter to link it to your macro
+### Linking a control
 
-![Macro connect GUI](/images/macros-connect.png)
+1. **Click** <FAIcon icon="fa-solid fa-circle-plus" /> next to the macro (2). Every control you can link to gets a blue plus icon <FAIcon icon="fa-solid fa-circle-plus" /> of its own, across the whole window.
+1. **Hover** over one of them. A line joins it to the macro, with a note of what's about to be connected.
+1. **Click** to make the link. A new blue destination knob (1) appears next to the macro. To cancel instead, press `escape` or click somewhere empty.
 
-### Adjusting macro strength
+You can link knobs, sliders and number fields. You can also link the handles you drag around, such as the points on the envelopes and the EQ graph, or the loop points on the waveform.
 
-Once you've linked a parameter to a macro, a small knob appears next to the macro. This **destination amount knob** controls how much the macro affects that parameter.
+### Setting the amount
 
-![Macro destination amount](/images/macros-destination-amount.png)
+There are two kinds of knob here, and they do different jobs. The macro knob is the one you play: turning it moves every control linked to it at once. Each blue destination knob (1) is one you set and then leave alone: it decides how far the macro moves its one control, anywhere from a subtle nudge to a sweep across the control's whole range. A new link starts at zero, so the macro does nothing to that control until you change it.
 
-- **Positive values**: Parameter increases when macro is turned up
-- **Negative values**: Parameter decreases when macro is turned up (bi-directional control)
-- **Strength**: Higher percentages create more dramatic changes
+The easiest way to set it is to turn the macro all the way up, then drag the destination knob while you play. Watch the linked control's coloured arc move, and listen until it sounds right.
 
-The macro's effect is relative to the parameter's current position, so you can set your base sound first, then use macros to perform variations around that starting point.
+- **Right of centre** — the control goes up as the macro goes up.
+- **Left of centre** — the control goes down as the macro goes up.
 
-Drag the knob to adjust the amount, or double-click to type an exact value. Right-clicking the knob opens a menu with further options, including entering a value, copying and pasting the amount between destinations, resetting it, and inverting it.
+The destination knob isn't linear: more of its travel is given to small amounts, so they're easier to set precisely.
 
-## Managing macros
+Hover over a destination knob to see what it's linked to. It also shows the control's value right now, and what it will be with the macro at 0% and at 100%. Rest the cursor there for a moment and Floe draws a line to the linked control, scrolling it into view if needed.
 
-### Removing destinations
-To unlink a parameter from a macro:
-1. Hover over the destination amount knob
-2. A **minus icon** will appear below the knob
-3. Click the minus icon to remove the connection
+Double-click a destination knob to type an amount, or right-click it for more options: copy and paste the amount between destinations, type a value, reset it to zero, invert it, or edit its range.
 
-### Renaming macros
-Give your macros meaningful names:
-1. Go to the **Macros tab**
-2. Click on the macro's name
-3. Type your new name
+### Editing the range
 
-![Macro rename](/images/macros-rename.png)
+Instead of setting an amount, you can set the two values the control moves between, in the control's own units: a filter sweeping from 200 Hz to 2 kHz, say. Right-click a destination knob and choose _Edit Range…_. The popup has two knobs:
 
-### Using macros for performance
-Switch to the **Play tab** for quick access to your macros during performance. This keeps your most expressive controls front and center while you're making music.
+- **Macro at 0%** — the control's value when the macro is fully down.
+- **Macro at 100%** — the control's value when the macro is fully up.
 
-## For preset creators
+Each knob changes only its own end, so you can raise the bottom of a filter sweep without changing where it ends up. While you hold either knob, you hear the sound as it would be with the macro at that end, though the macro itself doesn't move. Play some notes as you drag to find exactly the right values.
 
-If you're creating presets for others, macros are essential for making your sounds performance-ready. Well-designed macros turn static presets into dynamic, expressive instruments. Consider what aspects of the sound would be most musical to control, and create macros that enhance the emotional impact of the preset rather than just providing technical adjustments.
+Changing an end also changes what you hear with the macro where it is now. To keep the current sound, tick _Move (macro name) to keep this value_: Floe moves the macro to whichever position gives the control the value it has now. Everything else the macro controls moves with it.
 
-- Every macro should audibly do something - you should be able to easily hear that something is different moving from 0 to 100% on the macro knob.
-- Ideally macro names are a single word with no abbreviations
-- Check how the macros look on both the LAYERS and PEFORM page. Are the names readable or too cluttered?
-- Avoid technical details in macro names - describe what turning from 0 to 100% does to the patch's sound. For example, 'Pulse' rather than 'L1 LFO', 'Reverb' instead of 'Convol Mix', 'Vibrato' if the properties of increasing the that macro knob adds a vibrato effect.
-- Something to consider quite often: just like a 'Volume' knob _increases volume_ as you turn it up, so should your macro _increase the property_ of the name you've given. This is more intuitive. For example, set a macro that _decreases_ the gain of a high-shelf filter: call it 'Damp' or 'Muffle' because turning up the macro increases the sense of 'muffle' in the sound. Alternatively, you could invert the macro programming so that it increases the gain of the high-shelf filter. Then, a more appropriate name would be 'Brightness' or 'Highs'. Which inversion to use is up to you and depends on what is important.
-- Both 0% and 100% on the macro dial should be valid and usable. For example, if at 0% it essentially mutes the instrument, this isn't typically very helpful. Or it's similarly bad if 100% means the instrument is so loud it's clipping the meter. It can occasionally be useful to break this rule in the case of something like a filter cutoff where it's useful to be able to filter out the sound to nothing when recording a performance.
-- Not all 4 macros have to be used all the time. However, when not using 4, avoid put unused macros between or before active ones. Right-click a macro to Copy Macro and Paste Macro (or Reset Macro) to move macros so that macros are filled from left to right with unused macros at the end.
+### How a macro moves a control
 
+A macro moves a control relative to the control's own setting. With the macro at 0%, the control is exactly where you set it, and turning the macro up adds the amount on top. So adjusting the control itself shifts the whole sweep up or down.
+
+If more than one macro is linked to the same control, their movements add together. A control can never go beyond its normal range, however far the macros push it.
+
+### Removing a link
+
+Hover over a destination knob and a red <FAIcon icon="fa-solid fa-circle-minus" /> appears beneath it. Click it to remove the link. The control keeps its own setting; it just stops following the macro.
+
+### Naming macros
+
+Click the name (3) and type a new one. Choose a name that says what the macro does to the sound, such as _Brightness_ or _Swell_. The name is saved with the preset and labels the macro knob everywhere it appears.
+
+### Copying, swapping and resetting
+
+Right-click a macro knob for these options, alongside the usual ones for any knob:
+
+- **Copy Macro** and **Paste Macro** — copy a macro's value, name and links onto another macro.
+- **Swap with Left** and **Swap with Right** — exchange the macro with its neighbour, along with its value, name and links. This doesn't move MIDI CC assignments or DAW automation, though.
+- **Reset Macro to Default** — start the macro afresh, with no links and its original name. The next option resets it to how it was in the loaded preset instead.
+
+### Legacy destinations
+
+A yellow <FAIcon icon="fa-solid fa-triangle-exclamation" /> on a destination knob means it's linked to a [legacy parameter](../reference/legacy-parameters). These are kept so older DAW projects still work, and you'll only hear the macro move it while the legacy override is active. Legacy destinations can't use _Edit Range…_.

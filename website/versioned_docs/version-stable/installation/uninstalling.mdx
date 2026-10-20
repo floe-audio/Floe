@@ -11,44 +11,42 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
 import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+import ManualExclude from '@site/src/components/ManualExclude';
+import ManualOnly from '@site/src/components/ManualOnly';
+import LibraryName from '@site/src/components/LibraryName';
 
-You can uninstall sample libraries, presets, and Floe itself by following the steps below. If you want to completely remove Floe, follow all the steps in order.
+<ManualExclude types={['library']}>You can remove sample libraries, preset banks and Floe itself separately.</ManualExclude><ManualOnly types={['library']}>You can remove <LibraryName />'s sample library, its presets and Floe itself separately.</ManualOnly> To remove everything, work through the sections below in order. Libraries and presets are easiest to remove from inside Floe.
 
-_Packages_ are not uninstalled directly because they're just the distribution format for sample libraries and presets; Floe doesn't 'remember' packages.
+When Floe removes a library or preset bank, it sends it to your Trash or Recycle Bin rather than deleting it outright, so if you remove one by mistake, you can restore it from there.
 
-If you uninstall or overwrite a library, preset or preset bank by accident you can typically recover the item from your computer's Trash or Recycle Bin. You may find that item in the trash has a suffix such as '(old)'. Once restored you may rename the file/folder to remove this suffix.
+You might be wondering why there's no mention of _packages_ on this page. Packages are just the means of installing content into Floe. Sample libraries and presets are what actually get installed, so they're what you uninstall.
 
-## Uninstall sample libraries
-1. Open Floe
-1. Click on the 3-dots menu <FAIcon icon="fa-solid fa-ellipsis-v" /> at the top, then "Info".
-1. For each installed libraries, click the _uninstall_ button.
+## Uninstalling sample libraries
 
-You can also do this by right-clicking on the library name in the instrument/IR browser and choosing 'Uninstall'.
+1. Open the <FAIcon icon="fa-solid fa-ellipsis-v" /> menu in the top panel and choose _Info_.
+1. On the _Libraries_ tab, click _Uninstall_ on <ManualExclude types={['library']}>the library you want to remove</ManualExclude><ManualOnly types={['library']}><LibraryName />'s card</ManualOnly>, and confirm.
 
-<GeneratedScreenshot name="uninstall-library" alt="Uninstall library" />
+<GeneratedScreenshot name="uninstall-library" alt="A library's card in Floe's Info panel, with the Uninstall button" />
 
-## Uninstall presets
-1. Open Floe
-1. Open the preset browser by clicking on the preset name at the top.
-1. Right-click on the heading of each preset bank and choose 'Uninstall'
+You can also right-click <LibraryName>a library's name</LibraryName> in the Instrument or IR browser and choose _Uninstall_.
 
-Repeat for all installed preset banks.
+## Uninstalling presets
 
-<GeneratedScreenshot name="uninstall-preset-bank" alt="Uninstall preset bank" />
+1. Open the preset browser by clicking the preset's name in the top panel.
+1. Right-click the preset bank in the right-hand panel and choose _Uninstall_, then confirm.
 
+<GeneratedScreenshot name="uninstall-preset-bank" alt="The right-click menu of a preset bank in the preset browser" />
 
-## Uninstall Floe plugin
+The same works for a single folder of presets.<ManualExclude types={['library']}> Repeat for each preset bank you want to remove.</ManualExclude>
+
+## Uninstalling Floe
+
 ### <FAIcon icon="fa-brands fa-windows" /> Windows
-On Windows, Floe can be uninstalled using the standard method for uninstalling software, via the 'Add or Remove Programs' control panel. See the [Windows documentation here](https://support.microsoft.com/en-gb/windows/uninstall-or-remove-apps-and-programs-in-windows-4b55f974-2cc6-2d2b-d092-5905080eaf98).
 
-Close your DAW before running the uninstaller.
+Close your DAW, then uninstall Floe like any other program, from _Installed apps_ (or _Add or Remove Programs_) in Windows' settings, where it's listed as _Floe Audio Plugin_. See [Microsoft's guide](https://support.microsoft.com/en-gb/windows/uninstall-or-remove-apps-and-programs-in-windows-4b55f974-2cc6-2d2b-d092-5905080eaf98) if you need help.
 
-**This uninstalls Floe, but not libraries or presets.**
+This removes the Floe plugins, but not your libraries or presets.<ManualExclude types={['library']}> The uninstaller can also remove Mirage, Floe's predecessor.</ManualExclude>
 
-This uninstaller also supports uninstalling Mirage, the predecessor to Floe.
+### <FAIcon icon="fa-brands fa-apple" /> macOS and <FAIcon icon="fa-brands fa-linux" /> Linux
 
-### <FAIcon icon="fa-brands fa-apple" />/<FAIcon icon="fa-brands fa-linux" /> macOS or Linux
-
-To uninstall Floe on macOS or Linux, you must delete Floe's files manually. Visit the [file locations](../reference/file-locations) page to find where Floe's files are located on your system. For each of these locations, delete the files and folders.
-
-The key files to delete are the plugin files. However, you might also want to delete Floe's small additional files for thoroughness.
+There's no uninstaller: delete Floe's files yourself. The plugin files are the important ones, but you can delete the rest of Floe's files too, if you want to be thorough. See [File Locations](./file-locations) for where they all are.

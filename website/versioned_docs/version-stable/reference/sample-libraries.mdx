@@ -11,18 +11,14 @@ SPDX-FileCopyrightText: 2026 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
-Sample libraries are collections of mapped, playable sounds along with images, tags, and other metadata. Without sample libraries, Floe can't produce any sound.
+Sample libraries are where Floe's sounds come from: collections of mapped, playable sounds along with images, tags and other details. Without a sample library, Floe can't make any sound.
 
-Sample libraries often have a theme or focus, such as 'Music Box Suite' — multisampled music box instruments, or 'Lost Reveries' — a collection of ambient single-sample ambient tones.
+A library usually has a theme or focus. 'Music Box Suite', for example, is multi-sampled music boxes, while 'Lost Reveries' is a collection of single-sample ambient tones.
 
-A sample library may contain:
-- Instruments
-- Impulse Responses
+A sample library can contain [Instruments](./instruments), impulse responses, or both. Most focus on Instruments, but some contain only impulse responses, giving the [Convolution Reverb](../usage/effects#convolution-reverb) new spaces and textures to work with.
 
-Sample libraries are not loaded directly; instead you load the instruments into Floe's layers, or impulse responses into Floe's convolution reverb. However, you can view your installed libraries by opening the <FAIcon icon="fa-solid fa-ellipsis-v" /> 3-dots menu on Floe's main window and clicking "Info".
+You don't load a library itself. Instead, you load its Instruments into Floe's layers and its impulse responses into the Convolution Reverb. To see which libraries you have installed, open the <FAIcon icon="fa-solid fa-ellipsis-v" /> menu at the top of Floe's window and choose _Info_.
 
-Libraries typically focus on instruments, however, sometimes a sample library exclusively contains impulse responses for use in the convolution reverb - expanding the options for sound design.
+## What's inside a library
 
-At a technical level, _Floe sample libraries_ are a new, custom format; they're open, portable folders of audio files and configuration files developed with Floe's [developer tools](../develop/develop-libraries). Typically, a sample library is in a folder with a name like `Developer Name - Library Name`.
-
-Sample libraries can contain thousands of audio files and can be many gigabytes in size. They typically have a `Samples` subfolder and a file called `floe.lua`.
+Floe sample libraries use Floe's own open format: portable folders of audio files and configuration files, made with Floe's [developer tools](../develop/develop-libraries). A library's folder usually has a name like `Developer Name - Library Name`, and inside it a `Samples` subfolder and a file called `floe.lua`. Libraries can hold thousands of audio files and take up many gigabytes.

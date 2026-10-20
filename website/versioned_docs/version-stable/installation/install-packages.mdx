@@ -1,6 +1,7 @@
 ---
 id: install-packages
 title: Install Packages
+manual_library_title: Install {library} Package
 hide_table_of_contents: true
 description: How to install Floe packages containing sample libraries and presets
 ---
@@ -10,116 +11,111 @@ SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
-import data from "@site/static/generated-data.json";
 import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+import LibraryFeature from '@site/src/components/LibraryFeature';
+import LibraryInsert from '@site/src/components/LibraryInsert';
+import LibraryName from '@site/src/components/LibraryName';
+import ManualExclude from '@site/src/components/ManualExclude';
+import ManualOnly from '@site/src/components/ManualOnly';
 
-### At a glance
+<ManualExclude types={['library']}>Sample libraries and presets come to you in _packages_. Download your package file, then present it to Floe via its _Install package_ button.</ManualExclude><ManualOnly types={['library']}>You install <LibraryName /> from inside Floe: download its package file, then give it to Floe with the _Install package_ button.</ManualOnly>
 
-Download your package file(s). Click the 'Install package' button in Floe's Preferences panel. Direct it to the package file.
+1. <LibraryInsert slot="package-download"><ManualExclude types={['library']}>**Download your package(s)** — files ending `.floe-pkg` or `.floe-pkg-enc`.</ManualExclude><ManualOnly types={['library']}>**Download the <LibraryName /> package** — a file ending `.floe-pkg-enc` — along with your `.floe-license` file.</ManualOnly></LibraryInsert>
+1. **Open Floe** in your DAW. If you haven't installed it yet, see [Install Floe](./download-and-install-floe).
+1. **Open <FAIcon icon="fa-solid fa-cog" /> Preferences** from the top panel, and choose the _Packages_ tab.
+1. **Click _Install package_** and select your package file.<ManualExclude types={['library']}> You can select several at once.</ManualExclude>
+
+<GeneratedScreenshot name="install-packages" alt="The Packages tab of Floe's preferences" />
+
+<ManualExclude types={['floe', 'library']}>
 
 <video width="100%" controls>
   <source src="/images/package-installation.mp4" type="video/mp4" />
   Your browser does not support the video tag.
 </video>
 
-### Full instructions
+</ManualExclude>
 
-Firstly, if you haven't already, [download & install Floe](/download). Next, load up the Floe plugin in your DAW.
+<LibraryFeature has="encrypted-package">
 
-Download your chosen package(s) (`.floe-pkg` or `.floe-pkg-enc` files containing sample libraries and presets).
+## Entering your license key
 
-To install:
-1. Open Floe's Preferences panel (<FAIcon icon="fa-solid fa-cog" /> cog icon)
-2. Go to the Packages tab
-3. Click 'Install package' and select one or more package files
-4. Done - libraries/presets are immediately available
+<ManualExclude types={['library']}>Some packages, often paid ones, are locked and need a license key. They install in the same way, but Floe first asks for the key to unlock them. These packages end in `.floe-pkg-enc` and need Floe version 2 or later.</ManualExclude><ManualOnly types={['library']}>Floe asks for your license key to unlock <LibraryName /> as it installs.</ManualOnly> Everything happens offline, without an account or an internet connection.
 
-The package files aren't needed after installation - Floe offers to send them to the trash for you. No restart required.
+There are two ways to give Floe your key:
 
-<GeneratedScreenshot name="install-packages" alt="Floe Preferences panel showing the Packages tab" />
+- **Load a license file** — if your purchase came with a `.floe-license` file, choose _Load license file_ and select it.<ManualExclude types={['library']}> One file can hold keys for several packages, so it unlocks everything you've selected in one go.</ManualExclude>
+- **Enter a key manually** — paste your key into the box, using _Paste_, then click _Activate_.
 
+A license key is personal to you and contains your details. The summary at the end of the installation shows who the package is licensed to.
 
-## Advanced Details
+</LibraryFeature>
 
-### What is a package?
-A package is the portable distribution container used by Floe. It's exclusively used as the format for **downloading and installing content**.
+## When the installation finishes
 
-A package may contain:
-- Samples Libraries
-- Presets/Preset Banks
+<ManualExclude types={['library']}>The new libraries and presets</ManualExclude><ManualOnly types={['library']}><LibraryName /> and its presets</ManualOnly> are ready to use straight away, without restarting Floe or your DAW.
 
-Typically, a package contains one sample library, and a bank of factory presets for the library.
+Floe shows a summary of what it installed, with a couple of optional extras:
 
-But alternatively, a package could also contain only presets, or a collection of sample libraries, or any combination.
+- **Send to Trash** — delete the package file. Floe doesn't need it once it's installed, though you might like to keep a copy as a backup.
+- **Load Preset** — load <LibraryName>the preset bank</LibraryName>'s default preset. If Floe was blank when you installed, this preset is loaded for you instead.
 
-Floe doesn't remember packages after installation; they're just a means to get content onto your computer. Packages are created using Floe's [packaging tools](../develop/packaging), or using a ZIP utility.
+Click _Done_ to close the summary.
 
-### Encrypted packages
+## What is a package?
 
-Some packages use the `.floe-pkg-enc` format. Installation is the same as any other package — click 'Install package' and select the file — with one extra step: Floe prompts for a license key.
+A package is simply how content is delivered to Floe.<ManualExclude types={['library']}> It usually holds one sample library plus a bank of factory presets for it, but it can hold any mix: just presets, several libraries, or both.</ManualExclude><ManualOnly types={['library']}> The <LibraryName /> package holds the sample library together with its factory presets.</ManualOnly>
 
-Encrypted packages require Floe version 2 or later.
+Floe doesn't keep track of packages; they're just the means of getting sample libraries and presets installed into your [folders](./folders). To remove things, see [Uninstalling](./uninstalling).
 
-![License key prompt](/images/encrypted-package-key-required.png)
+## Installing to a different drive
 
-Paste the license key provided by the package developer, then click **Activate**. The whole process is offline; no internet connection or account is required.
+Floe installs into its default folders on your main drive unless you tell it otherwise. To install somewhere else, such as an external drive with more space:
 
-If your downloads came with a license file (`.floe-license`), you can choose 'Load a license file' instead of pasting. Floe reads every key in the file and matches each one to its package, so you can activate several packages in a single step. This is handy when you've selected multiple encrypted packages to install at once.
+1. On the _Packages_ tab, open the _Sample library install folder_ menu.
+1. Choose _Add folder_ and pick or create the folder you want, such as "Floe Libraries" on your external drive. Floe adds it to the folders it scans and selects it for installing.
+1. Do the same with the _Preset install folder_ menu, if you want your presets somewhere else too.
 
-A license key is personal to you and embeds your identifying information.
+Future packages install into the folders you've chosen. Libraries and presets you've already installed stay where they are, but Floe updates them in place when you install a newer version. To move them, see [Folders](./folders).
 
-Once installed, Floe shows who the package is licensed to:
+## Updates and conflicts
 
-![Installed encrypted package showing license holder](/images/encrypted-package-installed.png)
+<LibraryInsert slot="package-updates" />
 
-### ZIPs
+Whenever a new version comes out, install it in the same way. Floe handles upgrades for you:
 
-As of Floe version 2, Floe's default for packages now use `.floe-pkg` or `.floe-pkg-enc` format. The default used to be `.zip` files.
+- If you have an older version, Floe updates it where it is.
+- If you already have the same or a newer version, Floe skips it.
+- If you've changed the installed files yourself, Floe asks before touching them. You can skip that part to keep your changes, or overwrite it. For presets, you can also keep both.
 
-Floe still supports packages in ZIP format. We switched to `floe-pkg` because it's natural to extract a ZIP as soon as you download it, but Floe's 'Install Package' button wanted the ZIP un-extracted, often leaving to confusion and hassle.
+Whenever Floe replaces something, the old version goes to your Trash or Recycle Bin, with a name ending in something like `(old-3KJ9)`. If you change your mind, restore it from there and remove that ending from its name.
 
-If you still have a package ZIP, you can still install it. Don't extract it, leave it as a ZIP file and direct Floe to it using 'Install Package'. If you're on macOS: be aware that Safari automatically extracts ZIP files after downloading. To prevent this, open Safari's settings and uncheck **Open "safe" files after downloading** in the General tab.
+<ManualExclude types={['library']}>
 
-### Install to a custom location
-1. Create custom folders using Finder/File Explorer such as "Floe Libraries" and "Floe Presets"
-1. Add them to Floe's preferences under their respective heading
-1. Select them on the Package _install folder_ menus
+## ZIP packages
 
-#### Full details
-By default, Floe installs content to standard folders on your main drive. This can be changed though by selecting custom folders in the Preferences panel's Packages tab.
+Older packages (from Floe v1) are ZIP files (`.zip`). Floe still installs them. Don't extract the ZIP first: select the ZIP file itself with _Install package_.
 
-If you've not done this before, the dropdowns for _install folder_ menus might only show 'Default' locations. You need to first tell Floe about your custom folders and then select them here.
+On macOS, Safari extracts ZIP files after downloading them. To stop it, untick _Open "safe" files after downloading_ in the _General_ tab of Safari's settings.
 
-To do that, use your file browser program (Finder/File Explorer) and create the folder(s) where you want to keep Floe content and add them on Floe's preferences.
+</ManualExclude>
 
-Floe uses separate folders for sample libraries versus presets, so you might want to create one for each. For example, on your _SAMPLES_ hard drive, create folders: "Floe Libraries" and "Floe Presets". Add these 2 folders on Floe's preferences panels and select them as the default installation locations.
+<LibraryFeature unless="encrypted-package">
 
-Further details about folder management can be found on the [Folders](../usage/folders) page.
+## Installing by hand
 
-### How 'Install package' works
+You don't usually need to, but you can install a package without the _Install package_ button.<ManualExclude types={['library']}> This works for `.floe-pkg` and `.zip` packages, not ones that need a license key.</ManualExclude>
 
-Floe handles the installation process intelligently. It will check existing installations across all known folders, check for conflicts and handle upgrades. It will even detect if you've modified a library and give you the option to keep your modified version. It will ask you about skipping or overwriting if it needs too. It will never duplicate libraries unnecessarily.
+A `.floe-pkg` file is really a ZIP file with a different ending. Rename it to end in `.zip` instead (on macOS: right-click › _Get Info_ › _Name & Extension_; on Windows, first turn on _File name extensions_ in File Explorer's _View_ menu, then rename it), and extract it with your usual tools.
 
-### Manually installing
+Then copy the contents of its `Libraries` folder into one of Floe's sample library folders, and the contents of its `Presets` folder into one of its preset folders. You'll find them on the _Folders_ tab of Preferences, and the <FAIcon icon="fa-solid fa-up-right-from-square" /> button opens them. Floe picks up the new files straight away.
 
-For non-encrypted packages, (`.floe-pkg` or `.zip`), you can manually install libraries and presets by extracting the package file into the correct folders (instead of using the 'install package' button). Despite the different extension, `.floe-pkg` are also just ZIP files. You might want to first rename it to `.zip` and then extract it using any ZIP extraction tool - often just a matter of double-clicking on it.
+</LibraryFeature>
 
-1. Extract the package file.
-1. Open Floe.
-1. Open the Preferences panel using the gear icon at the top.
-1. Open the Folders tab.
-1. Here you can control which folders Floe looks for libraries and presets in. Copy/move the contents of the package's Libraries into one of Floe's library folders, and the same for Presets into one Floe's presets folder.
-1. Done. No need to restart Floe.
+<ManualExclude types={['library']}>
 
-Note: `.floe-pkg-enc` (encrypted) packages cannot be manually extracted; they must be installed through Floe using a license key.
+## Mirage libraries
 
-### Convert floe-pkg to zip
-No conversion needed! Just change the file extension from 'floe-pkg' to 'zip'. This only works for `.floe-pkg` files, not encrypted `.floe-pkg-enc` files. There are countless ways to do this. As quick guidance for our users:
-- On macOS Finder: right-click the file -> Get Info -> edit Name & Extension.
-- On Windows File Explorer: View -> Show -> File name extensions. Then right-click the file and rename.
+If a package contains a library made for [Mirage](../about-the-project/mirage), Floe's predecessor, you may see an error saying _Mirage Compatibility - FrozenPlain_ isn't installed. To fix it, download the [Mirage Compatibility package](https://github.com/FrozenPlain/floe-mirage-compatibility/releases/download/v1.2/FrozenPlain.-.Mirage.Compatibility.Package.floe-pkg) and install it like any other package.
 
-### Uninstalling packages
-Floe doesn't track packages - they are just the installation format. However, you can uninstall libraries and presets. Visit the [Uninstalling](./uninstalling) page for full instructions.
-
-### Mirage Compatibility
-If the package is a [Mirage](../about-the-project/mirage) library and you are getting errors about missing Mirage Compatibility, [download Mirage Compatibility Package.floe-pkg](https://github.com/FrozenPlain/floe-mirage-compatibility/releases/download/v1.2/FrozenPlain.-.Mirage.Compatibility.Package.floe-pkg) and install it like any other package.
+</ManualExclude>

@@ -1,0 +1,28 @@
+---
+id: getting-help
+title: Getting Help
+hide_table_of_contents: true
+manual_only: true
+description: Where to ask questions, get support and report problems
+---
+
+{/*
+SPDX-FileCopyrightText: 2026 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+*/}
+
+import ManualExclude from '@site/src/components/ManualExclude';
+import ManualOnly from '@site/src/components/ManualOnly';
+import LibraryName from '@site/src/components/LibraryName';
+import LibraryProductLink from '@site/src/components/LibraryProductLink';
+
+<ManualExclude types={['library']}>
+- **Online documentation** — this manual is available at [floe.audio](https://floe.audio), always up to date with the latest version of Floe.
+</ManualExclude>
+<ManualOnly types={['library']}>
+- **Latest manual** — visit <LibraryProductLink><LibraryName />'s product page</LibraryProductLink> for the latest version of this manual.
+- **Online documentation** — for Floe-specific documentation, you can also find information on [floe.audio](https://floe.audio).
+</ManualOnly>
+- **Forum** — ask questions and share ideas with other users on the [FrozenPlain forum](https://forum.frozenplain.com/).
+- **Contact** — for direct support, get in touch via [frozenplain.com/contact](https://www.frozenplain.com/contact).
+- **Report a problem** — use the _Share Feedback_ form inside Floe to report bugs or request features. See [Error Reporting](./error-reporting.mdx#share-feedback).

@@ -407,12 +407,12 @@ const config = {
                         from: ["/usage/effects", "/usage/effects.html"],
                     },
                     {
-                        to: "/docs/usage/key-ranges",
+                        to: stableDocRoute("usage/key-ranges"),
                         from: ["/usage/key-ranges", "/usage/key-ranges.html"],
                     },
                     { to: "/docs/usage/midi", from: ["/usage/midi", "/usage/midi.html"] },
                     {
-                        to: "/docs/usage/looping",
+                        to: stableDocRoute("usage/looping"),
                         from: ["/usage/looping", "/usage/looping.html"],
                     },
                     {

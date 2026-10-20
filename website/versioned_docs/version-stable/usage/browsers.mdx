@@ -2,7 +2,7 @@
 id: browsers
 title: Browsers
 hide_table_of_contents: true
-description: Comprehensive guide to using Floe's browsers for presets, instruments, and impulse responses.
+description: How to find and load presets, Instruments and impulse responses with Floe's browsers.
 ---
 
 {/*
@@ -11,112 +11,107 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
 import GeneratedScreenshot from '@site/src/components/GeneratedScreenshot';
+import ManualExclude from '@site/src/components/ManualExclude';
+import ManualOnly from '@site/src/components/ManualOnly';
 
-One of Floe's core goals is to provide a fast and fluid way to find and load sounds across large sound pools: the _browsers_ are the main way to do this.
+The browsers help you find the right items quickly, without scrolling through long lists. Think of them as supercharged drop-down menus.
 
-You may spend a lot of time with the browsers. They're used in several places on the interface:
-- Presets
-- Instruments for each layer
-- Impulse responses for the Convolution Reverb effect
+There are three browsers, and they all work the same way. Each one opens when you click the name of the item it loads:
 
-All browsers work the same, with some minor differences depending on context.
+- **Preset browser** — click the preset's name in the [top panel](./top-panel), which is there on every page.
+- **Instrument browser** — click the Instrument name at the top of a layer, on the [_Layers_](./layers#layer-header) page.
+- **IR browser** — click the IR name in the [Convolution Reverb](./effects#convolution-reverb) effect, on the _Effects_ page.
 
-<GeneratedScreenshot name="browser-full" alt="Browser Panel" />
+<GeneratedScreenshot name="browser-browse" alt="Layer 1's Instrument browser, open beneath its selector, with its regions numbered" />
 
-## Overview
+1. **Items** — the light panel on the left lists everything you can load. Click one to load it.
+1. **Narrowing down** — the dark panel on the right is for narrowing down the list on the left, such as to <ManualExclude types={['library']}>one sample library or </ManualExclude>one tag.
+1. **Selector** — the box you clicked to open the browser. It stays usable while the browser is open.
+1. **Navigation** — step back and forth through the pages of the right-hand panel.
+1. **Mode** — switch the right-hand panel between browse mode and [filter mode](#filter-mode).
 
-The fundamental design is a two-panel layout: filters on the left, and results on the right (loadable items).
+## Loading items
 
-Similar to if you were shopping online for t-shirts: you might use filters to narrow down the results by size, colour, price range, etc., and then browse the results that match your criteria.
+Click an item (1) to load it. The browser stays open, so you can try one sound after another, playing as you go. Once you've loaded something, the browser closes by itself as soon as you move the mouse away from it. You can also double-click an item to load it and close the browser in one go, or close it at any time by clicking outside it or pressing `escape`.
 
-The same principle applies here, except we use filters such as library, tag, or folder to instantly narrow down results of presets, instruments, or impulse responses.
+While the browser is open, the selector you clicked (3) can still be used: <FAIcon icon="fa-solid fa-caret-left" /> previous, <FAIcon icon="fa-solid fa-caret-right" /> next, <FAIcon icon="fa-solid fa-shuffle" /> random and <FAIcon icon="fa-solid fa-xmark" /> unload, where it has them.
 
-Initially however, Floe starts in the simple 'ONE' filter mode. This mode lets you select only one filter at a time. If you click on another filter, it replaces the existing one. You can change to AND or OR mode using the multi-mode menu **(3)**.
+Hover over an item for a moment to see more about it, such as its description.
 
-When no filters are applied, all items are shown in the results list.
+## Favourites
 
-- **1**: filters panel: filters to narrow down the results. Here we can see filters for libraries (Celtic Harp, Dulcitone, Lost Reveries, etc.) and folders within those libraries (Core, Extras, Mic Options, etc.). Clicking on these will filter down the results on the right panel (2).
-- **2**: the results list, showing items that match the current filter settings. Click these to load them. **Double-click** to load and close the browser in one action.
-- Numbers in brackets next to each filter, like _(26)_, show how many items match that filter. If you were to select this filter, the results list would narrow down to those matching items (unless you are using multi-select modes and already have filters).
-- **Search libraries/tags**: filters search box: type here to narrow down the available filters.
-- **Search instruments**: results search box: type here to filter the results list by name.
-- **Favourites**: on each item in the results list you can click the <FAIcon icon="fa-regular fa-star" /> star that appear on the right when you hover over an item. This adds it to your favourites list, which can be accessed using the _Favourites_ button.
-- **Left/right arrows** <FAIcon icon="fa-solid fa-caret-left" /><FAIcon icon="fa-solid fa-caret-right" />: navigate to the previous/next item in the results list.
-- **Random icon** <FAIcon icon="fa-solid fa-shuffle" />: load a random item from the results list.
-- **Location arrow** <FAIcon icon="fa-solid fa-location-arrow" />: scroll to the currently loaded item in the results list.
-- **Unload instrument**: unload the currently selected item. You can also click again on the loaded item in the results list to unload it.
+If there are items you keep coming back to, mark them as favourites. Hover over an item and click the <FAIcon icon="fa-solid fa-star" /> next to its name. The star stays lit to show it's a favourite. To see only your favourites, click the <FAIcon icon="fa-solid fa-star" /> in the toolbar at the bottom of the list. Click it again to see everything. Favourites are shared by every instance of Floe, so anything you star in one project is there in the next.
 
-## Filter buttons
+## The list of items
 
-Simple filters are small buttons, used for tags, authors and other simple filters. Click on them to filter down the results list.
+The left panel (1) starts off showing everything, and shrinks as you narrow it down with the right panel.
 
-<GeneratedScreenshot name="filter-button" alt="Filter button" />
+Beneath the list, a line of italic text says what you're looking at, such as _Showing all instruments_. As you narrow things down it changes to match<ManualExclude types={['library']}>, such as _Showing from Lost Reveries_</ManualExclude>. Each part of it that narrows the list has a <FAIcon icon="fa-solid fa-xmark" />: click one to remove it.
 
-## Filter cards
-Additionally, Floe has filter _cards_. They look quite different from the small filter buttons, but they actually function mostly in the same way, they just offer more information and house a tree-like structure of folders (also just a type of filter button).
+At the very bottom is a small toolbar:
 
-Cards are used for _sample libraries_ in the instrument and IR browsers, and for _preset banks_ in the preset browser.
+- <FAIcon icon="fa-solid fa-location-arrow" /> — jump to the item that's currently loaded. The right panel jumps to where it came from, too.
+- <FAIcon icon="fa-solid fa-star" /> — show only your favourites.
+- <FAIcon icon="fa-solid fa-magnifying-glass" /> — search. As you type, the list shows only the items containing your text. `ctrl`+`F` (`cmd`+`F` on macOS) opens it too.
 
-Cards are made up of two sections, the _header_ (**1**) and the _body_ (**2**). Both sections can be clicked.
+## Narrowing down
 
-<GeneratedScreenshot name="filter-card" alt="Browser Filter Card" />
+The right panel (2) has pages that you click through to narrow down the list. <ManualExclude types={['library']}>In the Instrument browser, for example, you might click _Libraries_, then a particular sample library. The list on the left then shows only that library's Instruments.</ManualExclude><ManualOnly types={['library']}>In the Instrument browser, for example, you might click _Browse by attribute_, then _Tags_, then one of the tags. The list on the left then shows only the Instruments with that tag.</ManualOnly> Numbers in brackets, such as _(26)_, show how many items each option holds.
 
-### Selecting in filter cards
+The first page offers two ways in. _Browse by collection_ narrows down by where items come from. _Browse by attribute_ narrows down by their properties, such as their tags or who made them.
 
-Click on the header (**1**) to expand or collapse the entire sample library or preset bank. Inside every card is an _All Items_ button that selects all items within. Alternatively, click on individual items in the body (**2**) to select specific folders within the library or bank — notice the item individually shows a gold left edge.
+As you click through the pages, a trail of the pages you've visited builds up at the bottom of the panel (4) — a bit like a web browser. Click any step to jump back to it, or click <FAIcon icon="fa-solid fa-house" /> to go back to the first page. The <FAIcon icon="fa-solid fa-arrow-left" /> and <FAIcon icon="fa-solid fa-arrow-right" /> arrows step back and forth.
 
-<GeneratedScreenshot name="filter-card-all-selected" alt="Filter card all selected" />
-<GeneratedScreenshot name="filter-card-body-item-selected" alt="Filter card single item selected" />
+## Right-click menus
 
-- **Subtle gold background**: indicates the filter is selected.
-- **Gold left edge**: indicates the filter is actively contributing to the results list.
+Right-click items in the browsers for options to do with their files:
 
-
-### Folder trees
-
-Items in the body (**2**) are sometimes hierarchical. You can see that some items are more indented than others. In this case, _Close_ and _Room_ are subfolders of _Mic Options_. 
-If you select a parent folder, the results list also shows items that match the subfolders. You can see _Mic Options_ is selected (it has a gold background), but also the gold left edge border extends to _Close_ and _Room_ indicating they are included in the filtering of the results list.
-
-<GeneratedScreenshot name="filter-card-body-tree" alt="Filter card item tree selected" />
-
-Developers typically don't use much hierarchy, but it can be an intuitive categorisation mechanism.
-
-Just because a parent folder has subfolders does not mean that it doesn't include its own items too (albeit this is less common). Imagine folders on your computer: a folder can contain files as well as subfolders. So sometimes you will find items that do cannot be found searching through the subfolders alone.
-
-### Right-click
-
-You can often right-click on filter cards to bring up additional options.
-
-## Multi-select mode
-
-By default, the browsers are in single-select mode: clicking on a new filter replaces the existing filter.
-
-Use the ONE/AND/OR menu in the top to switch to a multi-select mode.
-
-<GeneratedScreenshot name="browser-menu" alt="Browser more-options menu" />
-
-- **AND** mode means that all selected filters must be matched for an item to appear in the results list. The more filters you select, the narrower the results become.
-- **OR** mode means that items matching any of the selected filters will appear in the results list. The more filters you select, the broader the results become.
-
-Selected filters appear as dismissable buttons at the top of the results list, with an _AND_/_OR_ label between them showing how they're combined.
-
-In AND mode, Floe greys-out filters that wouldn't add to the result set (no items would match the combined filter), helping you avoid dead-end combinations.
+- **A preset** — open the folder it's in, make it your [default preset](../presets/loading-presets#default-preset), or send it to the bin.
+- **A preset bank or folder** — open it in your file manager, or uninstall it.
+- **A sample library** — open its folder, or uninstall it. See [Uninstalling](../installation/uninstalling).
 
 ## Keyboard navigation
 
-The browsers support keyboard navigation using the arrow keys and enter.
+You can use the browsers from your computer keyboard. The focused item gets a blue outline, which appears once you press an arrow key.
 
-The focused item is denoted by a blue outline box. This box is initially hidden but becomes visible when you press any arrow key.
+- `up`/`down` move through the list.
+- `enter` clicks the focused item.
+- `tab` moves between the left and right panels.
+- `left`/`right` move along the trail at the bottom of the right panel.
+- `ctrl`+`F` (`cmd`+`F` on macOS) opens the search.
+- `home`/`end` jump to the start or end of the list.
+- `ctrl`+`up`/`down` (`cmd` on macOS) jump to the previous or next folder.
+- `page up`/`page down` jump 8 items at a time.
 
-- Up/down arrows to move the selection in the results list.
-- Enter/return to 'click' the currently highlighted item.
-- Left/right arrows or tab to move between the filters panel and results list.
-- CTRL+F (CMD+F on Mac) to focus the results search box.
-- Home/End to jump to the start/end of the results list.
-- Hold CTRL (CMD on Mac) and use the up/down arrows to jump by to the previous/next folder.
-- Page Up/Page Down to jump up/down by 8 items at a time.
+## Filter mode
 
-Filter cards are keyboard-navigable, but filter buttons are not currently.
+Browse mode, where you click through one page at a time, is all most people need. When you know exactly what you're after, filter mode goes further: it lets you combine several ways of narrowing down at once, such as showing only Instruments <ManualExclude types={['library']}>tagged _ambient_ from one particular sample library</ManualExclude><ManualOnly types={['library']}>that have two particular tags</ManualOnly>.
+
+Switch to it with the <FAIcon icon="fa-solid fa-filter" /> button (5), and back to browse mode with <FAIcon icon="fa-solid fa-list" />.
+
+<GeneratedScreenshot name="browser-full" alt="The Instrument browser in filter mode, with its regions numbered" />
+
+1. **Filters** — every option in one tree, rather than pages to click through. Click a <FAIcon icon="fa-solid fa-caret-right" /> to open a section, then click the options you want.
+1. **Summary** — what's currently showing. Click the <FAIcon icon="fa-solid fa-xmark" /> next to a filter to remove it.
+1. **Mode** — switch between browse mode and filter mode.
+1. **Matching** — choose how your filters combine.
+
+The list on the left updates as soon as you click an option.
+
+Choose how the filters combine with the button next to the mode switch (4):
+
+<GeneratedScreenshot name="browser-menu" alt="The One, Match all and Match any menu" />
+
+- **Match all (AND)** — the one you'll usually want. Only items that match every selected filter are shown, so the more filters you choose, the shorter the list gets. Filters that would leave nothing to show are greyed out, so you don't hit dead ends.
+- **Match any (OR)** — items that match any of the selected filters are shown, so the more filters you choose, the longer the list gets.
+- **One** — only one filter at a time, like browse mode but with the tree layout.
+
+Filter mode has its own <FAIcon icon="fa-solid fa-magnifying-glass" /> search, at the bottom of the right panel, for finding a filter in the tree, such as the _aggressive_ tag.
+
+Filter mode pairs well with the <FAIcon icon="fa-solid fa-shuffle" /> random button: narrow the list down to the kind of sound you're after, then jump around within it for inspiration. See [Randomisation](./randomisation).
 
 ## Tips
-- Double-click on an item to load it and close the browser in one action.
+
+- The previous, next and random buttons (<FAIcon icon="fa-solid fa-caret-left" /> <FAIcon icon="fa-solid fa-caret-right" /> <FAIcon icon="fa-solid fa-shuffle" />) always stay within the list you've narrowed down to, whether the browser is open or closed. On the _Perform_ page and in the top panel, the preset arrows follow the preset browser in the same way.
+- Drag the bottom-right corner of a browser to resize it. To make room for longer names, drag the line where the two panels meet. Double-click either to reset it.
+- Each layer's Instrument browser remembers its own settings. On the _Layers_ page, set up each one the way you like, perhaps the first narrowed to the _bass_ tag and the second to _keys_. Then click the <FAIcon icon="fa-solid fa-shuffle" /> button that randomises every layer, and each one jumps to a random Instrument within its own selection.

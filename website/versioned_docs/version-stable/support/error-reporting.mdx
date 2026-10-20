@@ -1,0 +1,41 @@
+---
+id: error-reporting
+title: Error Reporting
+hide_table_of_contents: true
+description: How Floe reports problems, how to send feedback, and what to do if Floe stops responding
+---
+
+{/*
+SPDX-FileCopyrightText: 2025 Sam Windell
+SPDX-License-Identifier: CC-BY-SA-4.0
+*/}
+
+Floe is built to be dependable for professional work. When something does go wrong, a few systems help keep your project safe and get the problem fixed quickly.
+
+## Share feedback
+
+If you find a bug, have an idea for a feature or just want to tell us something, use the feedback form inside Floe. Open the <FAIcon icon="fa-solid fa-ellipsis-v" /> menu at the top of Floe's window and choose _Share Feedback_.
+
+- **Description** — what happened, or what you'd like. For a bug, say what you did just before it happened.
+- **Email** — optional. Add it if you'd like a reply.
+- **Include anonymous diagnostic data** — sends details about your system and Floe's state along with your message, which often makes a bug much quicker to track down.
+
+Please do report anything that doesn't seem right. We want to know about it, and we want to fix it.
+
+## Automatic error reports
+
+If Floe crashes, it sends an anonymous error report. The report describes the error, the state of Floe leading up to it, and the computer it was running on. That gives us what we need to fix the bug without asking you to gather the information yourself. Floe also sends anonymous notes of when each session starts and ends, which tell us how reliably Floe is running overall.
+
+To turn all of this off, enable _Disable anonymous error reports_ on the _General_ tab of Preferences. Floe is open source, so anyone can read the code and see exactly what's sent.
+
+## If Floe stops responding
+
+Floe tries never to take your DAW down with it. If it detects a serious problem, it stops itself rather than crashing the DAW: it goes silent and stops responding. Every instance of Floe in that DAW session is affected.
+
+When this happens:
+
+1. Save your DAW project under a new name. That keeps the rest of your work safe without replacing your last good save, since a stopped Floe can't save its sound into the project.
+2. Restart your DAW. Floe can't start again within the same DAW session.
+3. If a sound in Floe didn't come back as you left it, recover it from an [autosave](./autosave). The [instance name](./autosave#instance-names) in each autosave's file name tells you which instance it came from.
+
+An anonymous report of the problem is usually sent to us automatically, so we can work on a fix.

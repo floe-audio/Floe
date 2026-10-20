@@ -14,13 +14,13 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 import data from "@site/static/generated-data.json";
 import CodeBlock from '@theme/CodeBlock';
 
-This page explains how to develop sample libraries for Floe.
+Creating sample libraries for Floe **requires programming knowledge**.
 
-Creating sample libraries for Floe **requires programming knowledge**. While Floe itself is designed for all musicians, developing libraries involves writing Lua scripts to configure and map audio files. This programming-first approach enables automation, version control integration, AI-assisted workflows, bulk operations — scaling all the way to very complex libraries. It also allows creating custom functions for sample-mapping, normalisation, pitch-correction, and building instrument variations - a level of flexibility that cannot be achieved with UI-based sample-mapping tools.
+While Floe itself is designed for all musicians, developing libraries involves writing Lua scripts to configure and map audio files. This programming-first approach enables automation, version control integration, AI-assisted workflows, bulk operations — scaling all the way to very complex libraries. It also allows creating custom functions for sample-mapping, normalisation, pitch-correction, and building instrument variations - a level of flexibility that cannot be achieved with UI-based sample-mapping tools.
 
-In the future, we're looking at tools that convert/generate Floe Lua scripts to allow non-programmers to create libraries.
+In the future, we're looking into ways for non-programmers to create libraries too.
 
-:::note
+:::important
 
 We made these tools for our own use and are sharing them with the community. Consider contributing or [sponsorship](../about-the-project/sponsorship) if you'd like to see further investment in this area.
 
@@ -33,7 +33,7 @@ We made these tools for our own use and are sharing them with the community. Con
 
 ## Floe's sample library format
 
-Floe's format is revolved around configuring audio files into playable _instruments_ (a playable sound-source loaded into one of Floe's 3 layers). Instruments are always created as part of a _library_. The format also allows for adding IRs to the convolution reverb. Floe has a fixed GUI and engine - offering the same powerful playback and sample-based synthesis features to all instruments that you can load. Typically, after creating a sample libary, you'd create a bank of factory presets - this is done using Floe's standard GUI - saving preset files that utilise the instruments that you created.
+Floe's format is revolved around configuring audio files into playable _instruments_ (a playable sound-source loaded into one of Floe's 3 layers). Instruments are always created as part of a _library_. The format also allows for adding IRs to the convolution reverb. Floe has a fixed GUI and engine - offering the same powerful playback and sample-based synthesis features to all instruments that you can load. Typically, after creating a sample library, you'd create a bank of factory presets - this is done using Floe's standard GUI - saving preset files that utilise the instruments that you created.
 
 As someone in the community put it, our format is essentially _'[SFZ](https://sfzformat.com/) in Lua so you don't lose your mind'_ - which captures the gist pretty well.
 
@@ -102,11 +102,11 @@ Here's a made-up example of a `floe.lua` file:
 {data["sample-library-example-lua-no-comments"]}
 </CodeBlock>
 
-`floe.new_library()` must be called and returned it at the end of the script. All other features are optional. When Floe runs your Lua file, it will show you any errors that occur along with a line number and a description.
+`floe.new_library()` must be called, and the library it creates returned at the end of the script. All other features are optional. When Floe runs your Lua file, it will show you any errors that occur along with a line number and a description.
 
 ## How to get started
 
-1. Create a new folder in one of Floe's [sample library folders](../usage/folders). We recommend naming it 'Author Name - Library Name'.
+1. Create a new folder in one of Floe's [sample library folders](../installation/folders.mdx). We recommend naming it 'Author Name - Library Name'.
 1. Create a file in that folder called `my-library.floe.lua`.
 1. Create a subfolder called `Samples` and put your audio files in there.
 1. Open the Lua file in your text editor. If you're not already familiar with an editor, then Sublime Text or Visual Studio Code are reasonable choices.
@@ -196,7 +196,7 @@ Floe doesn't generate this kind of audio data for you because it can be slow to 
 ## Creating high-quality samples
 
 ### Levels
-It's important to ensure your audio samples have the the right levels. This makes browsing and switching samples in Floe a consistent, nice experience. Additionally, Floe offers the ability to layer sounds together; this process is more ergonomic when instruments have similar volume levels.
+It's important to ensure your audio samples have the right levels. This makes browsing and switching samples in Floe a consistent, nice experience. Additionally, Floe offers the ability to layer sounds together; this process is more ergonomic when instruments have similar volume levels.
 
 [Signet](https://github.com/SamWindell/Signet) can be a useful tool for changing the levels of your samples.
 
@@ -204,7 +204,7 @@ When changing the volume levels of a realistic multi-sampled instrument, you pro
 
 Here are some guidelines for levels:
 - Each sample's peak level should be less than -3 dB.
-- Playing the instrument should barely cause Floe's peak meter to reach its yellow region. Another way to levels could be this: RMS levels for an instrument _as a whole_ should be around -18 dB. Play the instrument polyphonically and watch the RMS level. If the instrument is designed to be monophonic, then adjust for that.
+- Playing the instrument should barely cause Floe's peak meter to reach its yellow region. Another way to judge levels: RMS levels for an instrument _as a whole_ should be around -18 dB. Play the instrument polyphonically and watch the RMS level. If the instrument is designed to be monophonic, then adjust for that.
 - The noise floor should be as low as possible: -60 dB is a good target. Use high-quality noise reduction tools to remove noise from your samples if you need to. Noise levels can quickly stack up with a multi-sampled instrument played polyphonically. Being too aggressive with algorithmic noise reduction can make your samples sound unnatural - so it's a balance.
 - Impulse responses should be normalised by their energy (power) levels: `signet my-impulses norm -100 --mode energy --independently && signet my-impulses norm 0`. Or if not using Signet, then adjust their levels so that they feel similar to the volume levels of Floe's built-in IRs.
 

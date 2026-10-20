@@ -10,8 +10,13 @@ SPDX-FileCopyrightText: 2025 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 */}
 
-An instrument is a playable sound source. It might be something like 'Upright Piano' or 'Ambient Drone'. It might be a single sample that loops, or a multisampled instrument with many samples mapped across the keyboard along with velocity layers and round robins.
+import LibraryFeature from '@site/src/components/LibraryFeature';
+import ManualExclude from '@site/src/components/ManualExclude';
 
-Instruments are loaded into any of Floe's 3 [layers](../usage/layers) using a powerful _[browser](../usage/browsers)_ which lets you easily find instruments across all your installed libraries. A layer that has no instrument loaded will say 'None' instead of the instrument name - click this to open the browser.
+An Instrument is a playable sound source. It might be a single sample that loops, or many samples mapped across the keyboard<LibraryFeature has="velocity-layers">, with velocity layers and round robins</LibraryFeature>.
 
-Instruments are provided via sample libraries, developed using Floe's open developer tools.
+You load an Instrument into any of the three [layers](../usage/layers) with the [Instrument browser](../usage/browsers)<ManualExclude types={['library']}>, which finds Instruments across all your installed sample libraries</ManualExclude>. A layer with no Instrument loaded shows _None_ in place of the name: click it to open the browser.
+
+<ManualExclude types={['library']}>
+Instruments come from sample libraries, which are made with Floe's open developer tools.
+</ManualExclude>
