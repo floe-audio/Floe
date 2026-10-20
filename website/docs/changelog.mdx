@@ -15,6 +15,28 @@ For instance: 0.0.1. Don't change the headings.
 
 # Changelog
 ## 2.0.4
+A big update with redesigned browsers, a reworked Distortion effect, a new Limiter and lots of improvements throughout. In summary:
+- Redesigned preset, Instrument and IR browsers, with a new Browse mode that gets you to a library, preset bank, folder or tag in a few clicks. See the [browsers docs](usage/browsers)
+- Overhauled Distortion effect: 10 new or upgraded types, cleaner sound with 4x oversampling, new Punish and Tilt controls, and Auto Gain to keep the volume steady as you turn up the drive. Existing presets and DAW projects load with the older types, kept as Legacy types
+- New Limiter effect, mainly for the end of the effects chain
+- Faster audio engine, up to 2.5x faster in heavy granular use
+- Granular Share Grains option: shared grains keep the same density however many notes you play, per-voice grains build chords into a dense wash
+- Variation option for granular layers and random LFO shapes, so a preset can repeat the exact same grain scatter or LFO movement on every note or on each key
+- Clearer macros: see macro movement on the filters, EQ, LFO, envelopes and waveform, see a parameter's macro-adjusted value in its popup, and set the 0% and 100% values directly with Edit Range
+- More descriptive tooltips, with values shown straight away on hover
+- Set a default preset for new instances of Floe to open with
+- New displays and meters: a LUFS meter, peak-hold lines, Compressor meters, a High-pass filter graph, and shape previews for Distortion and Bitcrush
+- Redesigned effects switches: bypass, add/remove, and jump to an effect in the rack from one place
+- Smoother, more useful Bit Crush controls
+- Swap layers and macros from their right-click menus
+- LFO Amount as an MPE press and slide target
+- Wider layer Pitch range of ±88 semitones
+- Respond to MIDI panic messages (All Notes Off and All Sound Off)
+- Many smaller improvements and fixes
+
+This release includes all changes listed in the beta changelogs below: 2.0.4-beta.1 through to 2.0.4-beta.3.
+
+### Changes since 2.0.4-beta.3
 - Fix clicks sometimes being ignored when Floe is busy, for example very quick clicks or moving the mouse away straight after clicking
 - Fix notes looping forever when a loop mode is set but the volume envelope is off
 - Fix the arpeggiator's step right-click menu not opening in Overview
