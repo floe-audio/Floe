@@ -312,6 +312,22 @@ export default function Home() {
 
                     </div>
                 </section>
+
+                <section className={styles.supportersSection}>
+                    <div className="container">
+                        <p className={styles.supportersEyebrow}>Supported by</p>
+                        <a href="https://gigperformer.com" className={styles.supporterLogoLink}>
+                            <img
+                                src={assetUrl('sponsor-gig-performer.png')}
+                                alt="Gig Performer"
+                                className={styles.supporterLogo}
+                            />
+                        </a>
+                        <p className={styles.supportersNote}>
+                            Thanks to <a href="https://gigperformer.com">Deskew Technologies</a>, creators of Gig Performer, for supporting Floe's development.
+                        </p>
+                    </div>
+                </section>
             </Layout>
         </>
     );

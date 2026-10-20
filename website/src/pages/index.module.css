@@ -460,6 +460,49 @@
   z-index: 1;
 }
 
+/* Supporters Section */
+.supportersSection {
+  padding: 2.5rem 0 3.5rem;
+  text-align: center;
+}
+
+.supportersSection :global(.container) {
+  max-width: 560px;
+  border-top: 1px solid rgba(var(--ifm-color-primary-rgb), 0.12);
+  padding-top: 2.5rem;
+}
+
+.supportersEyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ifm-color-emphasis-600);
+  margin-bottom: 1rem;
+}
+
+.supporterLogoLink {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.supporterLogoLink:hover {
+  transform: translateY(-2px);
+}
+
+.supporterLogo {
+  display: block;
+  width: 72px;
+  height: 72px;
+}
+
+.supportersNote {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--ifm-color-emphasis-700);
+  margin: 1rem 0 0;
+}
+
 /* Responsive Design */
 @media screen and (max-width: 996px) {
   .hero {
