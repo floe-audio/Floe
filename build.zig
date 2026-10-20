@@ -785,6 +785,7 @@ pub fn build(b: *std.Build) void {
         const npm_install = b.addSystemCommand(&.{ "npm", "install" });
         npm_install.setCwd(b.path("website"));
         npm_install.expectExitCode(0);
+        npm_install.has_side_effects = true;
 
         // Build the site for production
         {
@@ -3295,7 +3296,7 @@ fn doTarget(
             const real_home: ?[]const u8 = if (custom_presets_dir == null) realFloeHome(ctx.b) else null;
             const isolated_prefs =
                 if (custom_presets_dir) |dir| screenshotPrefs(ctx.b, dir) else websiteScreenshotPrefs(ctx.b, real_home.?);
-            if (custom_presets_dir != null) {
+            if (std_extras.isStepRequested(ctx.b, gen_doc_screenshots_step_name) or custom_presets_dir != null) {
                 ctx.b.build_root.handle.makePath(out_dir) catch |err|
                     std.debug.panic("Failed to create {s}: {s}", .{ out_dir, @errorName(err) });
             }
