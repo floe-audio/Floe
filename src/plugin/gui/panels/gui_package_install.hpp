@@ -151,7 +151,7 @@ static bool LicenseMethodRadio(GuiBuilder& builder, Box parent, String label, bo
     return row.button_fired;
 }
 
-// Renders the per-package "paste a key" blocks. Used by the "Enter each key manually" method.
+// Renders the per-package "paste a key" blocks. Used by the manual key entry method.
 static void PackageLicensePerProductInputs(GuiBuilder& builder,
                                            Box root,
                                            package::InstallJobs& package_install_jobs,
@@ -253,6 +253,15 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
                                      persistent_store::Store& persistent_store) {
     using Mode = PackageInstallPanelState::LicenseInputMode;
 
+    auto const num_awaiting_key = ({
+        usize n = 0;
+        for (auto& job : package_install_jobs)
+            if (job.job->state.Load(LoadMemoryOrder::Acquire) ==
+                package::InstallJob::State::AwaitingLicenseKey)
+                ++n;
+        n;
+    });
+
     auto const root = DoBox(builder,
                             {
                                 .layout {
@@ -290,21 +299,24 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
         panel_state.license_input_mode = Mode::AllKeysAtOnce;
     if (LicenseMethodRadio(builder,
                            radio_group,
-                           "Enter each key manually",
+                           num_awaiting_key > 1 ? "Enter each key manually"_s : "Enter the key manually"_s,
                            panel_state.license_input_mode == Mode::PerProduct,
                            1))
         panel_state.license_input_mode = Mode::PerProduct;
 
     switch (panel_state.license_input_mode) {
         case Mode::AllKeysAtOnce: {
-            DoBox(builder,
-                  {
-                      .parent = root,
-                      .text = "Unlock your package(s) using your license key file. One file unlocks all.",
-                      .wrap_width = -1,
-                      .size_from_text = true,
-                      .font = FontType::Body,
-                  });
+            DoBox(
+                builder,
+                {
+                    .parent = root,
+                    .text = num_awaiting_key > 1
+                                ? "Unlock your packages using your license key file. One file unlocks all."_s
+                                : "Unlock your package using your license key file."_s,
+                    .wrap_width = -1,
+                    .size_from_text = true,
+                    .font = FontType::Body,
+                });
 
             for (auto& job : package_install_jobs) {
                 if (job.job->state.Load(LoadMemoryOrder::Acquire) !=
