@@ -30,7 +30,7 @@ function CurrentVersionInfo() {
     return (
         <p style={{ textAlign: 'center', margin: '2rem 0' }}>
             <em>
-                Current version: v{data["latest-stable-release-version"]} • <a href="/docs/installation/download-and-install-floe#requirements">Requirements</a> • <a href="/docs/installation/download-and-install-floe">Installation Help</a>
+                Current version: v{data["latest-stable-release-version"]} • <a href="/docs/getting-started/system-requirements">Requirements</a> • <a href="/docs/installation/download-and-install-floe">Installation Help</a>
             </em>
         </p>
     );
