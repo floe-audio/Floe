@@ -128,9 +128,7 @@ SystemStats GetSystemStats() {
 }
 
 void OpenFolderInFileBrowser(String path) {
-    NSURL* file_url = [NSURL fileURLWithPath:StringToNSString(path)];
-    NSURL* folder_url = [file_url URLByDeletingLastPathComponent];
-    [[NSWorkspace sharedWorkspace] openURL:folder_url];
+    [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:StringToNSString(path) isDirectory:YES]];
 }
 
 void OpenFileInDefaultApp(String path) {
