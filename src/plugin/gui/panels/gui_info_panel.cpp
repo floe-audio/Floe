@@ -146,6 +146,17 @@ static void LibrariesInfoPanel(GuiBuilder& builder, InfoPanelContext& context, I
                     }))
                 OpenFolderInFileBrowser(*dir);
 
+        if (lib->license_path)
+            if (TextButton(builder,
+                           button_row,
+                           {
+                               .text = "License",
+                               .tooltip = (String)fmt::Assign(buffer,
+                                                              "Open {} in its default app",
+                                                              path::Filename(*lib->license_path)),
+                           }))
+                OpenFileInDefaultApp(*lib->license_path);
+
         if (TextButton(
                 builder,
                 button_row,
@@ -569,6 +580,96 @@ static void LegalInfoPanel(GuiBuilder& builder, InfoPanelContext&, InfoPanelStat
     }
 }
 
+static void TermsOfUseInfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState&) {
+    DynamicArrayBounded<char, 500> buffer {};
+
+    Sort(context.libraries, [](auto a, auto b) { return a->name < b->name; });
+
+    auto const root = DoBox(builder,
+                            {
+                                .layout {
+                                    .size = layout::k_fill_parent,
+                                    .contents_padding = {.lrtb = k_default_spacing},
+                                    .contents_gap = 4,
+                                    .contents_direction = layout::Direction::Column,
+                                    .contents_align = layout::Alignment::Start,
+                                    .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                },
+                            });
+
+    bool any_licenses = false;
+    for (auto lib : context.libraries)
+        if (lib->license_path) any_licenses = true;
+
+    DoBox(builder,
+          {
+              .parent = root,
+              .text = any_licenses
+                          ? "Each library's license file sets out how you're allowed to use its sounds."_s
+                          : "None of your installed libraries include a license file."_s,
+              .wrap_width = k_wrap_to_parent,
+              .size_from_text = true,
+          });
+
+    for (auto lib : context.libraries) {
+        if (!lib->license_path) continue;
+
+        auto const row = DoBox(builder,
+                               {
+                                   .parent = root,
+                                   .id_extra = Hash(lib->id),
+                                   .layout {
+                                       .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                       .contents_gap = 10,
+                                       .contents_direction = layout::Direction::Row,
+                                       .contents_align = layout::Alignment::Justify,
+                                   },
+                               });
+        DoBox(builder,
+              {
+                  .parent = row,
+                  .text = fmt::JoinInline<128>(Array {lib->name, lib->author}, " - "),
+                  .size_from_text = true,
+              });
+        auto const buttons = DoBox(builder,
+                                   {
+                                       .parent = row,
+                                       .layout {
+                                           .size = layout::k_hug_contents,
+                                           .contents_gap = k_small_gap,
+                                           .contents_direction = layout::Direction::Row,
+                                       },
+                                   });
+        if (TextButton(builder,
+                       buttons,
+                       {
+                           .text = "Open License",
+                           .tooltip = (String)fmt::Assign(buffer,
+                                                          "Open {} in its default app",
+                                                          path::Filename(*lib->license_path)),
+                       }))
+            OpenFileInDefaultApp(*lib->license_path);
+        if (auto const dir = path::Directory(*lib->license_path))
+            if (DoBox(
+                    builder,
+                    {
+                        .parent = buttons,
+                        .text = ICON_FA_UP_RIGHT_FROM_SQUARE,
+                        .size_from_text = true,
+                        .font = FontType::Icons,
+                        .font_size = k_font_icons_size * 0.8f,
+                        .text_colours = Col {.c = Col::Subtext0},
+                        .background_fill_auto_hot_active_overlay = true,
+                        .round_background_corners = 0b1111,
+                        .tooltip = (String)fmt::Assign(buffer, "Open folder in {}", GetFileBrowserAppName()),
+                        .button_behaviour = imgui::ButtonConfig {},
+                        .extra_margin_for_mouse_events = 2,
+                    })
+                    .button_fired)
+                OpenFolderInFileBrowser(*dir);
+    }
+}
+
 static void InfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelState& state) {
     constexpr auto k_tab_config = []() {
         Array<ModalTabConfig, ToInt(InfoPanelState::Tab::Count)> tabs {};
@@ -583,6 +684,9 @@ static void InfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelS
                     break;
                 case InfoPanelState::Tab::Legal:
                     tabs[index] = {.icon = ICON_FA_GAVEL, .text = "Legal"};
+                    break;
+                case InfoPanelState::Tab::TermsOfUse:
+                    tabs[index] = {.icon = ICON_FA_FILE_SIGNATURE, .text = "Terms of Use"};
                     break;
                 case InfoPanelState::Tab::Metrics:
                     tabs[index] = {.icon = ICON_FA_MICROCHIP, .text = "Metrics"};
@@ -611,6 +715,7 @@ static void InfoPanel(GuiBuilder& builder, InfoPanelContext& context, InfoPanelS
                               case InfoPanelState::Tab::About: f = AboutInfoPanel; break;
                               case InfoPanelState::Tab::Metrics: f = MetricsInfoPanel; break;
                               case InfoPanelState::Tab::Legal: f = LegalInfoPanel; break;
+                              case InfoPanelState::Tab::TermsOfUse: f = TermsOfUseInfoPanel; break;
                               case InfoPanelState::Tab::Count: PanicIfReached();
                           }
                           [f, &context, &state](GuiBuilder& builder) { f(builder, context, state); };

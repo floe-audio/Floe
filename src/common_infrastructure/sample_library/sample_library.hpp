@@ -284,6 +284,7 @@ struct Library {
     u32 num_instrument_samples {};
     u32 num_regions {};
     String path {}; // real filesystem path to mdata or lua file
+    Optional<String> license_path {}; // real filesystem path, Lua libraries only
     u64 file_hash {};
     ErrorCodeOr<Reader> (*create_file_reader)(Library const&, LibraryPath path) {};
     FileFormatSpecifics file_format_specifics;
@@ -371,6 +372,7 @@ using LibraryPtrOrError = ValueOrError<Library*, Error>;
 
 bool FilenameIsFloeLuaFile(String filename);
 bool FilenameIsMdataFile(String filename);
+bool FilenameIsLibraryLicenseFile(String filename);
 Optional<FileFormat> DetermineFileFormat(String path);
 
 // only honoured by the lua system

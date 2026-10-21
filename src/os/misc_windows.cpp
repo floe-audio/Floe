@@ -631,6 +631,7 @@ static void WindowsShellExecute(String arg) {
 }
 
 void OpenFolderInFileBrowser(String path) { WindowsShellExecute(path); }
+void OpenFileInDefaultApp(String path) { WindowsShellExecute(path); }
 void OpenUrlInBrowser(String url) { WindowsShellExecute(url); }
 
 bool IsRunningUnderDebugger() { return IsDebuggerPresent(); }

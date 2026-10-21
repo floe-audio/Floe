@@ -130,6 +130,17 @@ static void DoDotsMenu(GuiState& g) {
     if (MenuItem(g.builder,
                  root,
                  {
+                     .text = "Library Terms of Use",
+                     .tooltip = "Open the license files that come with your installed libraries"_s,
+                 })
+            .button_fired) {
+        g.info_panel_state.tab = InfoPanelState::Tab::TermsOfUse;
+        g.imgui.OpenModalViewport(g.info_panel_state.k_panel_id);
+    }
+
+    if (MenuItem(g.builder,
+                 root,
+                 {
                      .text = "Share Feedback",
                      .tooltip = "Open the feedback panel to share your thoughts about Floe"_s,
                  })

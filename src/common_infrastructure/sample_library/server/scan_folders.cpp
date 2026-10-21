@@ -7,6 +7,22 @@
 
 namespace sample_lib_server {
 
+static Optional<String>
+FindLibraryLicenseFile(String library_folder, ArenaAllocator& lib_arena, ArenaAllocator& scratch_arena) {
+    auto it = TRY_OR(dir_iterator::Create(scratch_arena,
+                                          library_folder,
+                                          {
+                                              .wildcard = "*",
+                                              .get_file_size = false,
+                                          }),
+                     return k_nullopt);
+    DEFER { dir_iterator::Destroy(it); };
+    while (auto const entry = TRY_OR(dir_iterator::Next(it, scratch_arena), return k_nullopt))
+        if (entry->type == FileType::File && sample_lib::FilenameIsLibraryLicenseFile(entry->subpath))
+            return dir_iterator::FullPath(it, *entry, lib_arena);
+    return k_nullopt;
+}
+
 static Optional<sample_lib::LibraryPtrOrError>
 DoLibraryReading(String path,
                  ArenaAllocator& lib_arena,
@@ -35,6 +51,9 @@ DoLibraryReading(String path,
 
     auto lib = TRY(sample_lib::Read(reader, format, path, lib_arena, scratch_arena));
     lib->file_hash = file_hash;
+    if (format == sample_lib::FileFormat::Lua)
+        if (auto const folder = path::Directory(path))
+            lib->license_path = FindLibraryLicenseFile(*folder, lib_arena, scratch_arena);
     return lib;
 }
 

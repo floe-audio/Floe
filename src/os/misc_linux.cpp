@@ -193,4 +193,6 @@ static bool FireAndForgetCommand(char const* const command, String argument) {
 
 void OpenFolderInFileBrowser(String path) { FireAndForgetCommand("xdg-open", path); }
 
+void OpenFileInDefaultApp(String path) { FireAndForgetCommand("xdg-open", path); }
+
 void OpenUrlInBrowser(String url) { FireAndForgetCommand("xdg-open", url); }

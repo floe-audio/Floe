@@ -133,6 +133,10 @@ void OpenFolderInFileBrowser(String path) {
     [[NSWorkspace sharedWorkspace] openURL:folder_url];
 }
 
+void OpenFileInDefaultApp(String path) {
+    [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:StringToNSString(path)]];
+}
+
 void OpenUrlInBrowser(String url) {
     [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:StringToNSString(url)]];
 }

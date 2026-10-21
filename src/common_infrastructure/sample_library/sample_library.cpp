@@ -171,6 +171,11 @@ bool FilenameIsFloeLuaFile(String filename) {
 
 bool FilenameIsMdataFile(String filename) { return EndsWithCaseInsensitiveAscii(filename, ".mdata"_s); }
 
+bool FilenameIsLibraryLicenseFile(String filename) {
+    auto const stem = path::FilenameWithoutExtension(filename);
+    return IsEqualToCaseInsensitiveAscii(stem, "licence") || IsEqualToCaseInsensitiveAscii(stem, "license");
+}
+
 Optional<FileFormat> DetermineFileFormat(String path) {
     auto const filename = path::Filename(path);
     if (FilenameIsFloeLuaFile(filename)) return FileFormat::Lua;
@@ -566,8 +571,22 @@ TEST_CASE(TestConvertVelocityRange) {
     return k_success;
 }
 
+TEST_CASE(TestLibraryLicenseFilename) {
+    CHECK(FilenameIsLibraryLicenseFile("licence"));
+    CHECK(FilenameIsLibraryLicenseFile("License.txt"));
+    CHECK(FilenameIsLibraryLicenseFile("LICENCE.pdf"));
+    CHECK(FilenameIsLibraryLicenseFile("license.md"));
+    CHECK(!FilenameIsLibraryLicenseFile("licenses.txt"));
+    CHECK(!FilenameIsLibraryLicenseFile("my-license.txt"));
+    CHECK(!FilenameIsLibraryLicenseFile("floe.lua"));
+    return k_success;
+}
+
 } // namespace detail
 
 } // namespace sample_lib
 
-TEST_REGISTRATION(RegisterLibraryTests) { REGISTER_TEST(sample_lib::detail::TestConvertVelocityRange); }
+TEST_REGISTRATION(RegisterLibraryTests) {
+    REGISTER_TEST(sample_lib::detail::TestConvertVelocityRange);
+    REGISTER_TEST(sample_lib::detail::TestLibraryLicenseFilename);
+}

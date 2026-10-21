@@ -22,6 +22,7 @@ struct InfoPanelState {
         About,
         Metrics,
         Legal,
+        TermsOfUse,
         Count,
     };
     static constexpr u64 k_panel_id = SourceLocationHash();

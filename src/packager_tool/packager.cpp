@@ -46,8 +46,7 @@ ErrorCodeOr<Paths> ScanLibraryFolder(ArenaAllocator& arena, String library_folde
     while (auto const entry = TRY(dir_iterator::Next(it, arena)))
         if (sample_lib::FilenameIsFloeLuaFile(entry->subpath))
             result.lua = dir_iterator::FullPath(it, *entry, arena);
-        else if (IsEqualToCaseInsensitiveAscii(path::FilenameWithoutExtension(entry->subpath), "license") ||
-                 IsEqualToCaseInsensitiveAscii(path::FilenameWithoutExtension(entry->subpath), "licence"))
+        else if (sample_lib::FilenameIsLibraryLicenseFile(entry->subpath))
             result.license = dir_iterator::FullPath(it, *entry, arena);
 
     if (!result.lua.size) {

@@ -50,6 +50,7 @@ PUBLIC SystemStats CachedSystemStats() {
 int CurrentProcessId();
 
 void OpenFolderInFileBrowser(String path);
+void OpenFileInDefaultApp(String path);
 void OpenUrlInBrowser(String url);
 
 u64 RandomSeed();
