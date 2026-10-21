@@ -59,7 +59,11 @@ class ConvolutionReverb final : public Effect {
 
         CopyFramesToSeparateChannels(input_channels, frames);
 
-        if (conv_context.start_fade_out) m_fade.SetAsFadeOut(context.sample_rate, 20);
+        // The new convolver may have already been swapped in elsewhere (e.g. during a processor reset).
+        // Fading out with nothing to swap would leave the fade stuck at silent, permanently muting the wet
+        // signal.
+        if (conv_context.start_fade_out && ConvolverSwapIsPending())
+            m_fade.SetAsFadeOut(context.sample_rate, 20);
 
         alignas(16) f32 wet_left[k_block_size_max] = {};
         alignas(16) f32 wet_right[k_block_size_max] = {};
@@ -101,6 +105,11 @@ class ConvolutionReverb final : public Effect {
 
     // audio-thread
     bool IsSilent() const { return m_remaining_tail_length == 0; }
+
+    // audio-thread
+    bool ConvolverSwapIsPending() const {
+        return (uintptr)m_desired_convolver.Load(LoadMemoryOrder::Relaxed) != k_desired_convolver_consumed;
+    }
 
     // [audio-thread]
     bool SwapConvolversIfNeeded() {
