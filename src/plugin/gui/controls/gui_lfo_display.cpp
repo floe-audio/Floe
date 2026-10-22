@@ -9,6 +9,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_param_elements.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
@@ -232,7 +233,7 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
     {
         auto const p0 = imgui.ViewportPosToWindowPos({viewport_r.x, centre_y});
         auto const p1 = imgui.ViewportPosToWindowPos({viewport_r.Right(), centre_y});
-        imgui.draw_list->AddLine(p0, p1, LiveCol(UiColMap::EqGridZero));
+        imgui.draw_list->AddLine(p0, p1, LiveCol(UiColMap::EqGridZero), HairlineThickness());
     }
 
     auto const half_h = viewport_r.h * 0.5f;
@@ -325,7 +326,11 @@ void DoLfoDisplay(GuiState& g, u8 layer_index, Rect viewport_r, bool greyed_out)
     if (base_differs) {
         auto base_line_col = FromU32(line_col);
         base_line_col.a /= 3;
-        imgui.draw_list->AddPolyline(base_curve_points, ToU32(base_line_col), false, 1.0f, true);
+        imgui.draw_list->AddPolyline(base_curve_points,
+                                     ToU32(base_line_col),
+                                     false,
+                                     CurveLineThickness(1.0f),
+                                     true);
     }
-    imgui.draw_list->AddPolyline(curve_points, line_col, false, 1.5f, true);
+    imgui.draw_list->AddPolyline(curve_points, line_col, false, CurveLineThickness(1.5f), true);
 }

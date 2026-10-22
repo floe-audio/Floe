@@ -61,10 +61,12 @@ DrawEnvelopeRangeLines(imgui::Context& imgui, EnvelopeXRange range, imgui::Id id
         auto const col = LiveCol(UiColMap::EnvelopeRangeLines);
         imgui.draw_list->AddLine(imgui.ViewportPosToWindowPos({range.min, top}),
                                  imgui.ViewportPosToWindowPos({range.min, bottom}),
-                                 col);
+                                 col,
+                                 HairlineThickness());
         imgui.draw_list->AddLine(imgui.ViewportPosToWindowPos({range.max, top}),
                                  imgui.ViewportPosToWindowPos({range.max, bottom}),
-                                 col);
+                                 col,
+                                 HairlineThickness());
     }
 }
 
@@ -609,10 +611,14 @@ void DoEnvelopeGui(GuiState& g,
             imgui.draw_list->AddPolyline(line_points_for(base_window_points),
                                          ToU32(base_line_col),
                                          false,
-                                         1,
+                                         CurveLineThickness(1),
                                          true);
         }
-        imgui.draw_list->AddPolyline(line_points_for(adsr_window_points), active_line_col, false, 1, true);
+        imgui.draw_list->AddPolyline(line_points_for(adsr_window_points),
+                                     active_line_col,
+                                     false,
+                                     CurveLineThickness(1),
+                                     true);
 
         // Handles.
         DrawEnvelopeHandle(imgui,

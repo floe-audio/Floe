@@ -617,7 +617,9 @@ void DoInstrumentInfoStrip(GuiState& g, u8 layer_index, Box parent) {
                                    });
             if (auto const r = BoxRect(g.builder, dot)) {
                 auto const window_r = g.imgui.ViewportRectToWindowRect(*r);
-                g.imgui.draw_list->AddCircleFilled(window_r.Centre(), 1.5f, LiveCol(UiColMap::MidTextDimmed));
+                g.imgui.draw_list->AddCircleFilled(window_r.Centre(),
+                                                   window_r.w / 2,
+                                                   LiveCol(UiColMap::MidTextDimmed));
             }
         }
 

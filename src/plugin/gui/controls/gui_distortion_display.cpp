@@ -10,6 +10,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processing_utils/distortion.hpp"
 #include "processor/processor.hpp"
@@ -122,7 +123,7 @@ void DoDistortionDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
     {
         auto const p0 = imgui.ViewportPosToWindowPos({viewport_r.x, centre_y});
         auto const p1 = imgui.ViewportPosToWindowPos({viewport_r.Right(), centre_y});
-        imgui.draw_list->AddLine(p0, p1, LiveCol(UiColMap::EqGridZero));
+        imgui.draw_list->AddLine(p0, p1, LiveCol(UiColMap::EqGridZero), HairlineThickness());
     }
 
     auto const half_h = viewport_r.h * 0.5f;
@@ -155,5 +156,5 @@ void DoDistortionDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
         };
         imgui.draw_list->AddConvexPolyFilled(verts, area_col, false);
     }
-    imgui.draw_list->AddPolyline(wet_points, line_col, false, 1.5f, true);
+    imgui.draw_list->AddPolyline(wet_points, line_col, false, CurveLineThickness(1.5f), true);
 }

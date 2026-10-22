@@ -71,7 +71,7 @@ void DoCurveMap(GuiState& g,
 
     {
         draw_list.PathClear();
-        DEFER { draw_list.PathStroke(LiveCol(UiColMap::CurveMapLine), false, 1.0f); };
+        DEFER { draw_list.PathStroke(LiveCol(UiColMap::CurveMapLine), false, CurveLineThickness(1.0f)); };
         for (auto const i : Range(working.size - 1)) {
             auto const& p0 = working[i];
             auto const& p1 = working[i + 1];

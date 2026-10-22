@@ -80,7 +80,7 @@ void DrawVoiceMarkerLine(imgui::Context const& imgui,
         imgui.draw_list->renderer.anti_aliased_lines = false;
 
         auto const col = ChangeAlpha(options.col, options.opacity);
-        imgui.draw_list->AddLine(pos, pos + f32x2 {0, height}, col);
+        imgui.draw_list->AddLine(pos, pos + f32x2 {0, height}, col, HairlineThickness());
     }
 }
 
@@ -494,10 +494,12 @@ void DrawPeakMeter(imgui::Context& imgui,
                 bold ? LiveCol(UiColMap::PeakMeterMarkersBold) : LiveCol(UiColMap::PeakMeterMarkers);
             imgui.draw_list->AddLine(f32x2 {origin_x, origin_y + y},
                                      f32x2 {origin_x + (marker_w - marker_pad), origin_y + y},
-                                     col);
+                                     col,
+                                     HairlineThickness());
             imgui.draw_list->AddLine(f32x2 {origin_x + total_w - (marker_w - marker_pad), origin_y + y},
                                      f32x2 {origin_x + total_w, origin_y + y},
-                                     col);
+                                     col,
+                                     HairlineThickness());
         };
 
         for (f32 db = 0; db > k_min_db; db -= options.marker_interval_db)

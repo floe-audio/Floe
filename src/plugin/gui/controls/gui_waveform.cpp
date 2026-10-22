@@ -225,6 +225,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
 
     auto const handle_height = WwToPixels(12.8f);
     auto const handle_width = WwToPixels(14.0f);
+    auto const line_thickness = HairlineThickness();
     constexpr auto k_epsilon = 0.001f;
     constexpr auto k_slider_sensitivity = 320.0f;
 
@@ -532,9 +533,12 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
                 geo;
             });
             adj_loop_xfade_size = adj_geometry.xfade_size;
-            adj_start_line = g.imgui.ViewportRectToWindowRect(r.WithXW(r.x + adj_geometry.start_pos, 1));
-            adj_end_line = g.imgui.ViewportRectToWindowRect(r.WithXW(r.x + adj_geometry.end_pos, 1));
-            adj_xfade_line = g.imgui.ViewportRectToWindowRect(r.WithXW(r.x + adj_geometry.xfade_line_pos, 1));
+            adj_start_line =
+                g.imgui.ViewportRectToWindowRect(r.WithXW(r.x + adj_geometry.start_pos, line_thickness));
+            adj_end_line =
+                g.imgui.ViewportRectToWindowRect(r.WithXW(r.x + adj_geometry.end_pos, line_thickness));
+            adj_xfade_line =
+                g.imgui.ViewportRectToWindowRect(r.WithXW(r.x + adj_geometry.xfade_line_pos, line_thickness));
             adj_loop_region_r = g.imgui.ViewportRectToWindowRect(
                 Rect::FromMinMax({r.x + Min(adj_geometry.start_pos, adj_geometry.end_pos), r.y},
                                  {r.x + Max(adj_geometry.start_pos, adj_geometry.end_pos), r.Bottom()}));
@@ -573,7 +577,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
         {
             auto const param = g.engine.processor.main_params.DescribedValue(start_param_id);
 
-            start_line = r.WithXW(r.x + loop_start_pos, 1);
+            start_line = r.WithXW(r.x + loop_start_pos, line_thickness);
             start_handle = {.xywh {start_line.Right() - handle_width, r.y, handle_width, handle_height}};
             if (reverse) start_handle.x += handle_width - start_line.w;
 
@@ -623,7 +627,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
         {
             auto const param = g.engine.processor.main_params.DescribedValue(end_param_id);
 
-            end_line = r.WithXW(r.x + loop_end_pos, 1);
+            end_line = r.WithXW(r.x + loop_end_pos, line_thickness);
             end_handle = {.xywh {end_line.x, r.y, handle_width, handle_height}};
             if (reverse) end_handle.x -= handle_width - end_line.w;
 
@@ -723,7 +727,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
         if (features.show_crossfade) {
             auto const& param = g.engine.processor.main_params.DescribedValue(xfade_param_id);
 
-            xfade_line = r.WithXW(r.x + loop_xfade_line_pos, 1);
+            xfade_line = r.WithXW(r.x + loop_xfade_line_pos, line_thickness);
             xfade_handle = {.xywh {xfade_line.x, r.y + handle_height, handle_width, handle_height}};
             if (reverse && mode.value.mode == sample_lib::LoopMode::Standard)
                 xfade_handle.x -= handle_width - xfade_line.w;
@@ -832,7 +836,7 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
             AdjustedLayerParamLinear(g, layer.index, LayerParamIndex::SampleOffset);
         g.imgui.draw_list->AddRectFilled(g.imgui.ViewportRectToWindowRect(r.WithW(r.w * adj_sample_offset)),
                                          LiveCol(UiColMap::WaveformSampleOffset));
-        g.imgui.draw_list->AddRectFilled(f32x2 {sample_offset_r.Right() - 1, sample_offset_r.y},
+        g.imgui.draw_list->AddRectFilled(f32x2 {sample_offset_r.Right() - line_thickness, sample_offset_r.y},
                                          sample_offset_r.Max(),
                                          g.imgui.IsHotOrActive(offs_imgui_id, MouseButton::Left)
                                              ? LiveCol(UiColMap::WaveformOffsetHandleHover)
@@ -853,17 +857,21 @@ static void DoWaveformControls(GuiState& g, LayerProcessor& layer, Rect r, PlayM
             if (mode.value.mode == sample_lib::LoopMode::Standard) {
                 g.imgui.draw_list->AddLine(adj_xfade_line.Min(),
                                            adj_end_line.BottomLeft(),
-                                           LiveCol(UiColMap::WaveformXFade));
+                                           LiveCol(UiColMap::WaveformXFade),
+                                           line_thickness);
                 g.imgui.draw_list->AddLine(other_xfade_line.BottomLeft(),
                                            adj_start_line.TopLeft(),
-                                           LiveCol(UiColMap::WaveformXFade));
+                                           LiveCol(UiColMap::WaveformXFade),
+                                           line_thickness);
             } else {
                 g.imgui.draw_list->AddLine(other_xfade_line.BottomLeft(),
                                            adj_left_line.TopLeft(),
-                                           LiveCol(UiColMap::WaveformXFade));
+                                           LiveCol(UiColMap::WaveformXFade),
+                                           line_thickness);
                 g.imgui.draw_list->AddLine(adj_right_line.TopRight(),
                                            adj_xfade_line.BottomLeft(),
-                                           LiveCol(UiColMap::WaveformXFade));
+                                           LiveCol(UiColMap::WaveformXFade),
+                                           line_thickness);
             }
         }
 
@@ -1189,7 +1197,7 @@ void DoWaveformElement(GuiState& g,
                             auto const top = g.imgui.ViewportPosToWindowPos({x_vp, viewport_r.y});
                             auto const bottom =
                                 g.imgui.ViewportPosToWindowPos({x_vp, viewport_r.y + viewport_r.h});
-                            g.imgui.draw_list->AddLine(top, bottom, slice_col);
+                            g.imgui.draw_list->AddLine(top, bottom, slice_col, HairlineThickness());
                         }
                     }
                 }

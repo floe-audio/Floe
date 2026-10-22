@@ -6,6 +6,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui_framework/colours.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 
@@ -28,7 +29,7 @@ void DrawBackground(imgui::Context& imgui, Rect viewport_r, ParamDescriptor cons
         auto const y = DbToY(db, viewport_r);
         auto const p0 = imgui.ViewportPosToWindowPos({viewport_r.x, y});
         auto const p1 = imgui.ViewportPosToWindowPos({viewport_r.Right(), y});
-        imgui.draw_list->AddLine(p0, p1, db == 0.0f ? zero_col : grid_col);
+        imgui.draw_list->AddLine(p0, p1, db == 0.0f ? zero_col : grid_col, HairlineThickness());
     }
 
     for (auto const f_hz : Array {100.0f, 1000.0f, 10000.0f}) {
@@ -37,7 +38,7 @@ void DrawBackground(imgui::Context& imgui, Rect viewport_r, ParamDescriptor cons
         auto const x = viewport_r.x + (*linear * viewport_r.w);
         auto const p0 = imgui.ViewportPosToWindowPos({x, viewport_r.y});
         auto const p1 = imgui.ViewportPosToWindowPos({x, viewport_r.Bottom()});
-        imgui.draw_list->AddLine(p0, p1, grid_col);
+        imgui.draw_list->AddLine(p0, p1, grid_col, HairlineThickness());
     }
 }
 
@@ -98,9 +99,13 @@ void DrawResponseCurve(imgui::Context& imgui,
     if (base_differs) {
         auto base_line_col = FromU32(line_col);
         base_line_col.a /= 3;
-        imgui.draw_list->AddPolyline(base_curve_points, ToU32(base_line_col), false, 1.0f, true);
+        imgui.draw_list->AddPolyline(base_curve_points,
+                                     ToU32(base_line_col),
+                                     false,
+                                     CurveLineThickness(1.0f),
+                                     true);
     }
-    imgui.draw_list->AddPolyline(curve_points, line_col, false, 1.5f, true);
+    imgui.draw_list->AddPolyline(curve_points, line_col, false, CurveLineThickness(1.5f), true);
 }
 
 void DrawHandle(imgui::Context& imgui,

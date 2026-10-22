@@ -10,6 +10,7 @@
 #include "gui/core/gui_state.hpp"
 #include "gui/elements/gui_common_elements.hpp"
 #include "gui/elements/gui_constants.hpp"
+#include "gui/elements/gui_element_drawing.hpp"
 #include "gui_framework/gui_live_edit.hpp"
 #include "processor/processor.hpp"
 
@@ -154,7 +155,10 @@ void DoBitCrushDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
                 auto const value = (f32)level / resolution;
                 if (value < -1.0f || value > 1.0f) continue;
                 auto const y = snap_to_pixel_centre(zero_y - ((value / k_full_scale_amplitude) * half_h));
-                imgui.draw_list->AddLine(f32x2 {window_r.x, y}, f32x2 {window_r.Right(), y}, grid_col);
+                imgui.draw_list->AddLine(f32x2 {window_r.x, y},
+                                         f32x2 {window_r.Right(), y},
+                                         grid_col,
+                                         HairlineThickness());
             }
         }
     }
@@ -163,14 +167,18 @@ void DoBitCrushDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
         if (step_spacing_px >= k_min_grid_line_spacing_px) {
             for (auto const step_index : Range(1u, num_whole_steps)) {
                 auto const x = snap_to_pixel_centre(window_r.x + ((f32)step_index / num_steps * window_r.w));
-                imgui.draw_list->AddLine(f32x2 {x, window_r.y}, f32x2 {x, window_r.Bottom()}, grid_col);
+                imgui.draw_list->AddLine(f32x2 {x, window_r.y},
+                                         f32x2 {x, window_r.Bottom()},
+                                         grid_col,
+                                         HairlineThickness());
             }
         }
     }
 
     imgui.draw_list->AddLine(f32x2 {window_r.x, zero_y},
                              f32x2 {window_r.Right(), zero_y},
-                             LiveCol(UiColMap::EqGridZero));
+                             LiveCol(UiColMap::EqGridZero),
+                             HairlineThickness());
 
     // Below the grid's own visibility threshold, holding each sample flat draws a near-single-pixel
     // staircase - fuzzy rather than informative, and a fair picture anyway of how close to continuous the
@@ -229,6 +237,6 @@ void DoBitCrushDisplay(GuiState& g, Rect viewport_r, bool greyed_out) {
     imgui.draw_list->AddPolyline(points,
                                  LiveCol(greyed_out ? UiColMap::EqLineGreyedOut : UiColMap::EqLine),
                                  false,
-                                 1.5f,
+                                 CurveLineThickness(1.5f),
                                  true);
 }

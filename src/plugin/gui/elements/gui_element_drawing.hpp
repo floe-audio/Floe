@@ -18,6 +18,12 @@ void DrawDropShadow(imgui::Context const& imgui, Rect r, DropShadowOptions const
 // Three diagonal lines filling the rect's bottom-right triangle, the classic corner grip.
 void DrawResizeCornerGrip(imgui::Context const& imgui, Rect r, u32 colour);
 
+// 1px except on very large GUIs. Whole pixels only: fractional widths render unevenly without anti-aliasing.
+inline f32 HairlineThickness() { return Max(1.0f, Floor(WwToPixels(0.5f))); }
+
+// For anti-aliased curves: base_pixels except on very large GUIs, growing smoothly from there.
+inline f32 CurveLineThickness(f32 base_pixels) { return Max(base_pixels, WwToPixels(base_pixels / 2)); }
+
 struct VoiceMarkerLineOptions {
     f32 opacity = 1;
     u32 col = LiveCol(UiColMap::WaveformLoopVoiceMarkers);

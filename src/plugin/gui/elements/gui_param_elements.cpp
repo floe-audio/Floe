@@ -1389,11 +1389,13 @@ void DoMuteSoloButtons(GuiState& g,
         if (vertical)
             g.imgui.draw_list->AddLine({window_r.x, window_r.Centre().y},
                                        {window_r.Right(), window_r.Centre().y},
-                                       LiveCol(UiColMap::MuteSoloButtonDivider));
+                                       LiveCol(UiColMap::MuteSoloButtonDivider),
+                                       HairlineThickness());
         else
             g.imgui.draw_list->AddLine({window_r.Centre().x, window_r.y},
                                        {window_r.Centre().x, window_r.Bottom()},
-                                       LiveCol(UiColMap::MuteSoloButtonDivider));
+                                       LiveCol(UiColMap::MuteSoloButtonDivider),
+                                       HairlineThickness());
     }
 
     DoMuteSoloButton(g, container, mute_param, false, vertical);
