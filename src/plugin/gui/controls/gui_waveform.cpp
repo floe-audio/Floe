@@ -32,7 +32,7 @@ static u64 DebouncedWaveformHash(WaveformHashDebounce& state, u64 raw_hash) {
         return 0;
     }
 
-    auto const now = TimePoint::Now();
+    auto const now = GuiIo().in.current_time;
     auto const secs_since_last_change =
         state.last_change_time ? (now - state.last_change_time) : k_calm_threshold_secs;
 

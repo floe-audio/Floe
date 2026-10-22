@@ -801,7 +801,8 @@ static void TopDisplay(GuiState& g, Rect r, s32 starting_octave, s8 num_octaves,
     auto const is_screenshot = IsScreenshotRequest("key-range-enlarged"_s);
 
     if (imgui.WasJustMadeHot(id))
-        GuiIo().out.SetTimedWakeup(SourceLocationHash(), TimePoint::Now() + k_seconds_delay_before_enlarge);
+        GuiIo().out.SetTimedWakeup(SourceLocationHash(),
+                                   GuiIo().in.current_time + k_seconds_delay_before_enlarge);
 
     if (imgui.IsHot(id) && !imgui.IsPopupMenuOpen(popup_id) &&
         imgui.SecondsSpentHot() > k_seconds_delay_before_enlarge)
