@@ -366,6 +366,16 @@ enum class FileType : u8 { File, Directory };
 
 ErrorCodeOr<FileType> GetFileType(String path);
 
+// Uniquely identifies a file or directory regardless of the path (or symlink) used to reach it.
+struct FileIdentity {
+    bool operator==(FileIdentity const&) const = default;
+    u64 device;
+    u64 file_id[2]; // Windows uses all 128 bits; Unix uses file_id[0] for the inode
+};
+
+// Follows symlinks.
+ErrorCodeOr<FileIdentity> GetFileIdentity(String path);
+
 // Turns a relative path into an absolute path.
 // Unix:
 // - Replaces tilde ~ with the user's home directory.
@@ -482,6 +492,7 @@ struct Iterator {
     Options options;
     void* handle;
     String base_path;
+    Optional<FileIdentity> identity; // Windows: not set if it couldn't be queried.
     bool reached_end;
 };
 

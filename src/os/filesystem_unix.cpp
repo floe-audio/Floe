@@ -47,6 +47,14 @@ ErrorCodeOr<FileType> GetFileType(String path) {
     return FileType::File;
 }
 
+ErrorCodeOr<FileIdentity> GetFileIdentity(String path) {
+    PathArena temp_path_allocator {Malloc::Instance()};
+    struct ::stat info;
+    auto r = ::stat(NullTerminated(path, temp_path_allocator), &info);
+    if (r != 0) return FilesystemErrnoErrorCode(errno, "stat");
+    return FileIdentity {.device = (u64)info.st_dev, .file_id = {(u64)info.st_ino, 0}};
+}
+
 namespace dir_iterator {
 
 ErrorCodeOr<Iterator> Create(ArenaAllocator& arena, String path, Options options) {
@@ -57,6 +65,14 @@ ErrorCodeOr<Iterator> Create(ArenaAllocator& arena, String path, Options options
     auto handle = opendir(NullTerminated(result.base_path, scratch_arena));
     if (!handle) return FilesystemErrnoErrorCode(errno, "opendir");
     result.handle = handle;
+
+    struct stat info {};
+    if (fstat(dirfd(handle), &info) != 0) {
+        auto const error = FilesystemErrnoErrorCode(errno, "fstat");
+        closedir(handle);
+        return error;
+    }
+    result.identity = FileIdentity {.device = (u64)info.st_dev, .file_id = {(u64)info.st_ino, 0}};
 
     return result;
 }

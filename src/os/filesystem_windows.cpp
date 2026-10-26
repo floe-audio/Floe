@@ -711,6 +711,35 @@ ErrorCodeOr<FileType> GetFileType(String absolute_path) {
     return FileType::File;
 }
 
+ErrorCodeOr<FileIdentity> GetFileIdentity(String absolute_path) {
+    ASSERT(path::IsAbsolute(absolute_path));
+    ASSERT(IsValidUtf8(absolute_path));
+
+    PathArena temp_path_arena {Malloc::Instance()};
+
+    // Zero access rights is enough to query metadata. Directories can only be opened with
+    // FILE_FLAG_BACKUP_SEMANTICS. Without FILE_FLAG_OPEN_REPARSE_POINT, symlinks and junctions are followed.
+    auto const handle =
+        CreateFileW(TRY(path::MakePathForWin32(absolute_path, temp_path_arena, true)).path.data,
+                    0,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    nullptr,
+                    OPEN_EXISTING,
+                    FILE_FLAG_BACKUP_SEMANTICS,
+                    nullptr);
+    if (handle == INVALID_HANDLE_VALUE) return FilesystemWin32ErrorCode(GetLastError(), "CreateFileW");
+    DEFER { CloseHandle(handle); };
+
+    FILE_ID_INFO info {};
+    if (!GetFileInformationByHandleEx(handle, FileIdInfo, &info, sizeof(info)))
+        return FilesystemWin32ErrorCode(GetLastError(), "GetFileInformationByHandleEx");
+
+    FileIdentity result {.device = info.VolumeSerialNumber};
+    static_assert(sizeof(info.FileId.Identifier) == sizeof(result.file_id));
+    __builtin_memcpy_inline(result.file_id, info.FileId.Identifier, sizeof(result.file_id));
+    return result;
+}
+
 ErrorCodeOr<MutableString> AbsolutePath(Allocator& a, String path) {
     ASSERT(path.size);
     ASSERT(IsValidUtf8(path));
@@ -1000,6 +1029,8 @@ static bool ShouldSkipFile(WString filename, bool skip_dot_files) {
 ErrorCodeOr<Iterator> Create(ArenaAllocator& a, String path, Options options) {
     path = path::TrimDirectorySeparatorsEnd(path);
     auto result = TRY(Iterator::InternalCreate(a, path, options));
+    // Errors are left for Next() to report, since Create() doesn't touch the filesystem on Windows.
+    if (auto const identity = GetFileIdentity(path); identity.HasValue()) result.identity = identity.Value();
     return result;
 }
 

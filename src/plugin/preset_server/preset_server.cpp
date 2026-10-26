@@ -1036,10 +1036,13 @@ ReadPresetBankFile(String path, ArenaAllocator& arena, ArenaAllocator& scratch_a
     return ParsePresetBankFile(file_data, arena);
 }
 
+using AncestorFolderIdentities = DynamicArrayBounded<FileIdentity, k_max_nested_folders + 1>;
+
 static ErrorCodeOr<void> ScanFolder(PresetServer& server,
                                     String subfolder_of_scan_folder,
                                     ArenaAllocator& scratch_arena,
                                     PresetServer::ScanFolder& scan_folder,
+                                    AncestorFolderIdentities& ancestor_folders,
                                     u32 depth = 0) {
     ASSERT(CurrentThreadId() == server.server_thread_id);
 
@@ -1050,6 +1053,14 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
 
     auto const absolute_folder =
         (String)path::Join(scratch_arena, Array {(String)scan_folder.path, subfolder_of_scan_folder});
+
+    // A symlink pointing to one of its own ancestors would otherwise have us descend until the depth limit.
+    auto const folder_identity = ({
+        Optional<FileIdentity> identity {};
+        if (auto const o = GetFileIdentity(absolute_folder); o.HasValue()) identity = o.Value();
+        identity;
+    });
+    if (folder_identity && Contains(ancestor_folders, *folder_identity)) return k_success;
 
     auto const entries = TRY(FindEntriesInFolder(scratch_arena,
                                                  absolute_folder,
@@ -1140,12 +1151,18 @@ static ErrorCodeOr<void> ScanFolder(PresetServer& server,
             AppendFolderAndPublish(server, preset_folder, scratch_arena);
     }
 
+    if (folder_identity) dyn::Append(ancestor_folders, *folder_identity);
+    DEFER {
+        if (folder_identity) dyn::Pop(ancestor_folders);
+    };
+
     for (auto const& entry : entries) {
         if (entry.type == FileType::Directory) {
             TRY(ScanFolder(server,
                            path::Join(scratch_arena, Array {subfolder_of_scan_folder, entry.subpath}),
                            scratch_arena,
                            scan_folder,
+                           ancestor_folders,
                            depth + 1));
         }
     }
@@ -1158,7 +1175,8 @@ ScanFolder(PresetServer& server, ArenaAllocator& scratch_arena, PresetServer::Sc
     ASSERT(CurrentThreadId() == server.server_thread_id);
     if (scan_folder.scanned) return k_success;
     scan_folder.scanned = true;
-    TRY(ScanFolder(server, "", scratch_arena, scan_folder));
+    AncestorFolderIdentities ancestor_folders;
+    TRY(ScanFolder(server, "", scratch_arena, scan_folder, ancestor_folders));
     return k_success;
 }
 

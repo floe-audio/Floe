@@ -346,9 +346,23 @@ void Destroy(RecursiveIterator& it) {
 ErrorCodeOr<Optional<Entry>> Next(RecursiveIterator& it, ArenaAllocator& result_arena) {
     do {
         if (it.dir_path_to_iterate.size) {
-            it.stack.Prepend(it.arena,
-                             TRY(CreateSubIterator(result_arena, it.dir_path_to_iterate, it.options)));
+            auto sub_iterator = TRY(CreateSubIterator(result_arena, it.dir_path_to_iterate, it.options));
             dyn::Clear(it.dir_path_to_iterate);
+
+            // The stack is the chain of ancestors of the new directory. If the new directory is one of them,
+            // a symlink has created a loop and descending would never end.
+            auto const is_loop = ({
+                bool loop = false;
+                if (sub_iterator.identity)
+                    for (auto const& ancestor : it.stack)
+                        if (ancestor.identity == *sub_iterator.identity) loop = true;
+                loop;
+            });
+
+            if (is_loop)
+                Destroy(sub_iterator);
+            else
+                it.stack.Prepend(it.arena, sub_iterator);
         }
 
         while (!it.stack.Empty()) {
@@ -1324,7 +1338,46 @@ TEST_CASE(TestFilesystemApi) {
                 CHECK(found_file_through_link);
             }
         }
+
+        SUBCASE("symlink loop") {
+            auto const subdir = String(path::Join(a, Array {dir, "subdir"_s}));
+            auto const link_to_parent = path::Join(a, Array {subdir, "link_to_parent"_s});
+
+            TRY(CreateDirectory(subdir, {.create_intermediate_directories = false}));
+            TRY(WriteFile(path::Join(a, Array {subdir, "file.txt"_s}), "data"_s.ToByteSpan()));
+            REQUIRE(::symlink(NullTerminated(dir, a), NullTerminated(link_to_parent, a)) == 0);
+
+            auto it = REQUIRE_UNWRAP(dir_iterator::RecursiveCreate(a, dir, {}));
+            DEFER { dir_iterator::Destroy(it); };
+
+            DynamicArrayBounded<String, 10> subpaths;
+            while (auto opt_entry = REQUIRE_UNWRAP(dir_iterator::Next(it, a))) {
+                REQUIRE(subpaths.size != subpaths.Capacity());
+                dyn::Append(subpaths, opt_entry->subpath);
+            }
+
+            CHECK_EQ(subpaths.size, 3u);
+            CHECK(Contains(subpaths, "subdir"_s));
+            CHECK(Contains(subpaths, (String)path::Join(a, Array {"subdir"_s, "file.txt"_s})));
+            CHECK(Contains(subpaths, (String)path::Join(a, Array {"subdir"_s, "link_to_parent"_s})));
+        }
 #endif
+    }
+
+    SUBCASE("GetFileIdentity") {
+        auto const dir = tests::TempFolderUnique(tester);
+        auto const subdir_a = String(path::Join(a, Array {dir, "a"_s}));
+        auto const subdir_b = String(path::Join(a, Array {dir, "b"_s}));
+        auto const file = String(path::Join(a, Array {dir, "file.txt"_s}));
+        TRY(CreateDirectory(subdir_a, {.create_intermediate_directories = false}));
+        TRY(CreateDirectory(subdir_b, {.create_intermediate_directories = false}));
+        TRY(WriteFile(file, "data"_s.ToByteSpan()));
+
+        auto const identity_a = REQUIRE_UNWRAP(GetFileIdentity(subdir_a));
+        CHECK(identity_a == REQUIRE_UNWRAP(GetFileIdentity(subdir_a)));
+        CHECK(identity_a != REQUIRE_UNWRAP(GetFileIdentity(subdir_b)));
+        CHECK(identity_a != REQUIRE_UNWRAP(GetFileIdentity(file)));
+        CHECK(GetFileIdentity(path::Join(a, Array {dir, "missing"_s})).HasError());
     }
 
     SUBCASE("Absolute") {
