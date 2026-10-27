@@ -1276,7 +1276,8 @@ FlushParameterEvents(AudioProcessor& processor, clap_input_events const& in, cla
 
 // Audio-thread
 static void AudioThreadReset(AudioProcessor& processor) {
-    ClearInbox(processor);
+    // We don't clear the inbox: it holds parameter and state changes that haven't reached the audio thread
+    // yet, and reset() must not change parameter values. The next process() picks them up.
     processor.voice_pool.EndAllVoicesInstantly();
     processor.audio_processing_context.pitchwheel_position = {};
     processor.audio_processing_context.midi_note_state = {};

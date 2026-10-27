@@ -397,6 +397,7 @@ enum class StateProperties : u8 {
     SampleInst = 1 << 3,
     SoundShapersOn = 1 << 4,
     ArpWithRandomness = 1 << 5, // Arpeggiator on the first layer, using random note order and humanise
+    FirstLayerMuted = 1 << 6,
 };
 
 inline StateProperties operator|(StateProperties a, StateProperties b) {
@@ -477,6 +478,9 @@ static ErrorCodeOr<Span<u8 const>> MakeState(ArenaAllocator& arena, StatePropert
         param(LayerParamIndex::ArpRate) = (f32)param_values::ArpSyncedRate::_1_64;
         param(LayerParamIndex::ArpHumanise) = 1;
     }
+
+    if (properties & StateProperties::FirstLayerMuted)
+        state.param_values[ToInt(ParamIndexFromLayerParamIndex(0, LayerParamIndex::Mute))] = 1;
 
     DynamicArray<u8> buffer {arena};
     TRY(CodeState(state,
@@ -761,6 +765,66 @@ TEST_CASE(TestHostingClap) {
                                         max_difference);
                         CHECK_LT(max_difference, 0.01f);
                     }
+                }
+
+                SUBCASE("reset keeps state loaded while active") {
+                    // Hosts may call reset() after we've loaded state but before the audio thread has picked
+                    // it up. The new state must still reach the audio thread.
+                    LoadState(
+                        tester,
+                        plugin,
+                        REQUIRE_UNWRAP(MakeState(tester.scratch_arena,
+                                                 StateProperties::Sine | StateProperties::FirstLayerMuted)));
+                    REQUIRE(plugin->activate(plugin, 44100, 1, 1024));
+                    DEFER { plugin->deactivate(plugin); };
+
+                    auto const run_on_audio_thread = [&](auto&& function) {
+                        Thread audio_thread {};
+                        audio_thread.Start(
+                            [&] {
+                                test_host.audio_thread_id.Store(CurrentThreadId(), StoreMemoryOrder::Relaxed);
+                                REQUIRE(plugin->start_processing(plugin));
+                                DEFER { plugin->stop_processing(plugin); };
+                                function();
+                            },
+                            "audio");
+                        audio_thread.Join();
+                    };
+
+                    auto const process_options = [&](EventQueue events) {
+                        return ProcessTestOptions {
+                            .seed = 0x5e7,
+                            .num_frames = 8820,
+                            .num_channels = 2,
+                            .sample_rate = 44100,
+                            .min_block_size = 1,
+                            .max_block_size = 1024,
+                            .constant_block_size = 0,
+                            .events = events,
+                            .capture_output = true,
+                        };
+                    };
+
+                    run_on_audio_thread(
+                        [&] { Process(tester, plugin, tester.scratch_arena, process_options({})); });
+
+                    LoadState(tester,
+                              plugin,
+                              REQUIRE_UNWRAP(MakeState(tester.scratch_arena, StateProperties::Sine)));
+
+                    EventQueue events {};
+                    events.AppendMidiMessage(tester.scratch_arena, 0, MidiMessage::NoteOn(60, 100, 0));
+                    Span<Span<f32>> output {};
+                    run_on_audio_thread([&] {
+                        plugin->reset(plugin);
+                        output = Process(tester, plugin, tester.scratch_arena, process_options(events));
+                    });
+
+                    f32 peak = 0;
+                    for (auto const channel : output)
+                        for (auto const sample : channel)
+                            peak = Max(peak, Abs(sample));
+                    CHECK_GT(peak, 0.01f);
                 }
 
                 SUBCASE("all notes off and all sound off") {
