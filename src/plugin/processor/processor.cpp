@@ -1233,6 +1233,11 @@ static void ConsumeParamEventsFromMainThread(AudioProcessor& processor,
     }
 }
 
+void RequestCoalescedHostCallback(AudioProcessor& processor) {
+    if (processor.host_callback_requested.Exchange(true, RmwMemoryOrder::AcquireRelease)) return;
+    processor.host.request_callback(&processor.host);
+}
+
 static void SendParamChangesToMainThread(AudioProcessor& processor, ChangedParams& changes_for_main_thread) {
     // Update the main-thread representation of the parameters if they have changed.
     if (!changes_for_main_thread.changed.AnyValuesSet()) return;
@@ -1247,7 +1252,7 @@ static void SendParamChangesToMainThread(AudioProcessor& processor, ChangedParam
     });
     processor.param_changes_for_main_thread.Push(events);
 
-    processor.host.request_callback(&processor.host);
+    RequestCoalescedHostCallback(processor);
 }
 
 static void
@@ -1846,6 +1851,9 @@ void ResetLufsMeter(AudioProcessor& processor) {
 
 static void OnMainThread(AudioProcessor& processor) {
     ZoneScoped;
+    // Clear before consuming so that anything the audio-thread pushes after this triggers a new request.
+    processor.host_callback_requested.Exchange(false, RmwMemoryOrder::AcquireRelease);
+
     processor.convo.DeletedUnusedConvolvers();
 
     // Clear any instruments that aren't used anymore. The audio thread will request this callback after it

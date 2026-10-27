@@ -246,6 +246,10 @@ struct AudioProcessor {
 
     Atomic<audio_thread_inbox::Flags> inbox_flags {}; // From main-thread to audio.
 
+    // Set when a coalesced host callback is requested, cleared by the main-thread when it's serviced.
+    // Avoids sending the host a request for every audio block when one is already pending.
+    Atomic<bool> host_callback_requested {false};
+
     clap_process_status previous_process_status {-1};
 
     VoicePool voice_pool {};
@@ -360,6 +364,9 @@ struct ParamChangeFlags {
 bool SetParameterValue(AudioProcessor& processor, ParamIndex index, f32 value, ParamChangeFlags flags);
 
 bool LayerIsSilent(AudioProcessor const& processor, u32 layer_index);
+
+// [threadsafe]
+void RequestCoalescedHostCallback(AudioProcessor&);
 
 void ResetAudioProcessing(AudioProcessor&);
 void ResetLufsMeter(AudioProcessor&);

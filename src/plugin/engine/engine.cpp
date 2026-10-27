@@ -998,9 +998,11 @@ void Engine::OnProcessorChange(ChangeFlags flags) {
         return;
     }
 
-    // Audio-thread: the listener is main-thread only, so we just wake the GUI.
+    // Audio-thread: the listener is main-thread only, so we just wake the GUI. Meter, note and status changes
+    // happen almost every block and only the GUI cares about them, so they don't warrant a host callback.
     RequestGuiUpdate(instance_index);
-    host.request_callback(&host);
+    if (flags & (ProcessorListener::InstrumentChanged | ProcessorListener::IrChanged))
+        RequestCoalescedHostCallback(processor);
 }
 
 Engine::Engine(clap_host const& host,
@@ -1060,7 +1062,12 @@ Engine::~Engine() {
 
 static void PluginOnTimer(Engine& engine, clap_id timer_id) {
     ASSERT(g_is_logical_main_thread);
-    if (engine.timer_id == timer_id) OnMainThread(engine);
+    if (engine.timer_id != timer_id) return;
+    OnMainThread(engine);
+
+    // In case the host dropped a request, which would otherwise leave the request flag stuck.
+    if (engine.processor.host_callback_requested.Load(LoadMemoryOrder::Acquire))
+        engine.host.request_callback(&engine.host);
 }
 
 static void PluginOnPollThread(Engine& engine) {
