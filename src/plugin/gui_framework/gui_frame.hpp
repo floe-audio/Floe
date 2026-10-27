@@ -358,11 +358,5 @@ inline Rect CentredModalRect(f32x2 size_ww) {
     return {.pos = (window_size - size) / 2, .size = size};
 }
 
-// These are totally safe with regards to threads and lifetimes since they just work with global atomic bools.
-// The GUI doesn't even have to exist.
-// [threadsafe]
-void RequestGuiUpdate(FloeInstanceIndex index);
-bool ConsumeGuiUpdateRequest(FloeInstanceIndex index);
-
 // Internal.
 void SetGuiIo(GuiFrameInput* in, GuiFrameOutput* out);

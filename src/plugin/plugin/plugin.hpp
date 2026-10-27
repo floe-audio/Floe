@@ -215,6 +215,12 @@ extern clap_plugin_descriptor const g_plugin_info;
 clap_plugin const* CreateFloeInstance(clap_host const* clap_host);
 
 void OnPollThread(FloeInstanceIndex index);
+
+// These are totally safe with regards to threads and lifetimes since they just work with global atomic bools.
+// The GUI doesn't even have to exist.
+// [threadsafe]
+void RequestGuiUpdate(FloeInstanceIndex index);
+bool ConsumeGuiUpdateRequest(FloeInstanceIndex index);
 void OnPreferenceChanged(FloeInstanceIndex index, prefs::Key const& key, prefs::Value const* value);
 
 char const* PuglEventString(PuglEventType type);

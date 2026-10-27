@@ -21,6 +21,7 @@
 #include "gui/core/gui_prefs.hpp"
 #include "gui/core/gui_state.hpp"
 #include "gui_frame.hpp"
+#include "plugin/plugin.hpp"
 
 ErrorCodeCategory const app_window_error_code {
     .category_id = "APPW",

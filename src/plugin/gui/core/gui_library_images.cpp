@@ -8,6 +8,7 @@
 #include "gui/elements/gui_constants.hpp"
 #include "gui_framework/gui_frame.hpp"
 #include "gui_framework/image.hpp"
+#include "plugin/plugin.hpp"
 
 enum class LibraryImageType : u8 { Icon, Background };
 

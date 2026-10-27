@@ -115,6 +115,16 @@ inline Allocator& FloeInstanceAllocator() { return PageAllocator::Instance(); }
 static u16 g_floe_instances_initialised {};
 static Array<FloePluginInstance*, k_max_num_floe_instances> g_floe_instances {};
 
+static Array<Atomic<bool>, k_max_num_floe_instances> g_request_gui_update {};
+
+void RequestGuiUpdate(FloeInstanceIndex index) {
+    g_request_gui_update[index].Store(true, StoreMemoryOrder::Release);
+}
+
+bool ConsumeGuiUpdateRequest(FloeInstanceIndex index) {
+    return g_request_gui_update[index].Exchange(false, RmwMemoryOrder::Acquire);
+}
+
 // The params value_to_text/text_to_value callbacks are thread-safe (a host may call them from any
 // thread), but preferences may only be read on the main thread. We mirror the preference here and keep
 // it in sync from the main thread via the preference-changed handler.

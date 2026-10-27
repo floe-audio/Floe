@@ -8,6 +8,7 @@
 
 #include "gui_framework/gui_frame.hpp"
 #include "gui_framework/image.hpp"
+#include "plugin/plugin.hpp"
 #include "processor/sample_processing.hpp"
 
 inline Allocator& PixelsAllocator() { return PageAllocator::Instance(); }

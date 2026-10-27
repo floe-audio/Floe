@@ -992,8 +992,15 @@ static void OnMainThread(Engine& engine) {
 
 void Engine::OnProcessorChange(ChangeFlags flags) {
     if (flags & ProcessorListener::IrChanged) MarkNeedsAttributionTextUpdate(attribution_requirements);
-    NotifyListener(*this);
-    if (!g_is_logical_main_thread) host.request_callback(&host);
+
+    if (g_is_logical_main_thread) {
+        NotifyListener(*this);
+        return;
+    }
+
+    // Audio-thread: the listener is main-thread only, so we just wake the GUI.
+    RequestGuiUpdate(instance_index);
+    host.request_callback(&host);
 }
 
 Engine::Engine(clap_host const& host,
