@@ -2531,8 +2531,9 @@ fn buildVst3(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
         dso.root_module.addCMacro("RELEASE", "1");
     }
     dso.root_module.addCMacro("MACOS_USE_STD_FILESYSTEM", "1");
-    dso.root_module.addCMacro("CLAP_WRAPPER_VERSION", "\"0.11.0\"");
+    dso.root_module.addCMacro("CLAP_WRAPPER_VERSION", "\"0.17.0\"");
     dso.root_module.addCMacro("STATICALLY_LINKED_CLAP_ENTRY", "1");
+    dso.root_module.addCMacro("CLAP_WRAPPER_BUILD_FOR_VST3", "1");
 
     var flags = FlagsBuilder.init(ctx, cfg, .{
         .ubsan = false,
@@ -2565,9 +2566,12 @@ fn buildVst3(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             "detail/vst3/plugview.cpp",
             "detail/vst3/process.cpp",
             "detail/vst3/categories.cpp",
+            "detail/vst3/channelmap.cpp",
             "clap_proxy.cpp",
             "detail/shared/sha1.cpp",
+            "detail/shared/util.cpp",
             "detail/clap/fsutil.cpp",
+            "detail/clap/preset_discovery.cpp",
         },
         .flags = flags.flags.items,
     });
@@ -2696,7 +2700,7 @@ fn buildAu(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
         }
         flags.addFlag("-fno-char8_t");
         flags.addFlag("-DMACOS_USE_STD_FILESYSTEM=1");
-        flags.addFlag("-DCLAP_WRAPPER_VERSION=\"0.11.0\"");
+        flags.addFlag("-DCLAP_WRAPPER_VERSION=\"0.17.0\"");
         flags.addFlag("-DSTATICALLY_LINKED_CLAP_ENTRY=1");
         break :blk2 flags.flags.items;
     };
@@ -2727,7 +2731,9 @@ fn buildAu(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
         .files = &.{
             "clap_proxy.cpp",
             "detail/shared/sha1.cpp",
+            "detail/shared/util.cpp",
             "detail/clap/fsutil.cpp",
+            "detail/clap/preset_discovery.cpp",
             "detail/os/macos.mm",
             "detail/clap/mac_helpers.mm",
             "wrapasauv2.cpp",
@@ -2748,8 +2754,7 @@ fn buildAu(ctx: *const BuildContext, cfg: *const TargetConfig, deps: struct {
             \\
             \\ struct {[factory_function]s} : free_audio::auv2_wrapper::WrapAsAUV2 {{
             \\     {[factory_function]s}(AudioComponentInstance ci) : 
-            \\         free_audio::auv2_wrapper::WrapAsAUV2(AUV2_Type::aumu_musicdevice, 
-            \\                                              "{[clap_name]s}",
+            \\         free_audio::auv2_wrapper::WrapAsAUV2("{[clap_name]s}",
             \\                                              "{[clap_id]s}",
             \\                                              0,
             \\                                              ci) {{

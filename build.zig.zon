@@ -34,12 +34,12 @@
             .hash = "N-V-__8AAHNWwAASlNuYbrP1-3UqXdwbYvZ_6nIJhpAcRMfi",
         },
         .clap = .{
-            .url = "https://github.com/free-audio/clap/archive/refs/tags/1.2.3.tar.gz",
-            .hash = "N-V-__8AAJ0IOwDGU09eyNgdU99_TixuQnS6E7dLq1bSlvNA",
+            .url = "https://github.com/free-audio/clap/archive/refs/tags/1.2.10.tar.gz",
+            .hash = "N-V-__8AAB-JOwBFtOGup87WSc2jjAlPh8eIMTZnpkjysvO1",
         },
         .clap_wrapper = .{
-            .url = "git+https://github.com/SamWindell/clap-wrapper#b54e52394410d33ac0d4a8e420b21d8e8c0c3e37",
-            .hash = "N-V-__8AADsCEQAQen0Jma51EHeja0rrbgees_m-UV4GbWGQ",
+            .url = "git+https://github.com/free-audio/clap-wrapper#806bba0a5f792e3966b99c1561ab9952d3316d7c",
+            .hash = "N-V-__8AALH6JABYuaPVS0eKybvSxLoVlNrO3snBSN4Z_Ctb",
         },
         .dr_libs = .{
             .url = "git+https://github.com/mackron/dr_libs#da35f9d6c7374a95353fd1df1d394d44ab66cf01",

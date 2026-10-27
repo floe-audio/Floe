@@ -136,11 +136,11 @@ linkFarm name [
     };
   }
   {
-    name = "N-V-__8AAJ0IOwDGU09eyNgdU99_TixuQnS6E7dLq1bSlvNA";
+    name = "N-V-__8AAB-JOwBFtOGup87WSc2jjAlPh8eIMTZnpkjysvO1";
     path = fetchZigArtifact {
       name = "clap";
-      url = "https://github.com/free-audio/clap/archive/refs/tags/1.2.3.tar.gz";
-      hash = "sha256-8s1Jo+RW/ROkwM7qsPlMuv0VhjpjU8B1BYPpCLPM9AM=";
+      url = "https://github.com/free-audio/clap/archive/refs/tags/1.2.10.tar.gz";
+      hash = "sha256-WP25d8ZniFnBXVeUI3i2UTmRePSaOo7K0YE7nyMdwJY=";
       unpack = false;
     };
   }
@@ -172,11 +172,11 @@ linkFarm name [
     };
   }
   {
-    name = "N-V-__8AADsCEQAQen0Jma51EHeja0rrbgees_m-UV4GbWGQ";
+    name = "N-V-__8AALH6JABYuaPVS0eKybvSxLoVlNrO3snBSN4Z_Ctb";
     path = fetchZigArtifact {
       name = "clap_wrapper";
-      url = "git+https://github.com/SamWindell/clap-wrapper#b54e52394410d33ac0d4a8e420b21d8e8c0c3e37";
-      hash = "sha256-lSM8Yy4awvXpjBHI1yiYLVMSYgMU4OZIZB1LHFcaPE0=";
+      url = "git+https://github.com/free-audio/clap-wrapper#806bba0a5f792e3966b99c1561ab9952d3316d7c";
+      hash = "sha256-KgoZG+QUreefKF9QDj8bJWLL2PhxAP9/B+nCrWpjRzc=";
       unpack = true;
     };
   }
