@@ -2964,6 +2964,27 @@ static void DoLibraryRightClickMenu(GuiBuilder& builder,
         }
     }
 
+    {
+        auto lib = ({
+            auto const lib_id = find_library(menu_state.item_hash);
+            lib_id ? sample_lib_server::FindLibraryRetained(context.sample_library_server, *lib_id)
+                   : sample_lib_server::ResourcePointer<sample_lib::Library> {};
+        });
+        DEFER { lib.Release(); };
+
+        if (lib)
+            if (auto const manual_path = sample_lib::ManualFilesystemPath(*lib, builder.arena))
+                if (MenuItem(builder,
+                             root,
+                             {
+                                 .text = "Open User Manual",
+                                 .is_selected = false,
+                                 .no_icon_gap = true,
+                             })
+                        .button_fired)
+                    OpenFileInDefaultApp(*manual_path);
+    }
+
     if (MenuItem(builder,
                  root,
                  {

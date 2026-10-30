@@ -266,6 +266,15 @@ static ErrorCodeOr<AboutLibraryDocument> WriteAboutLibraryDocument(sample_lib::L
                               "The license for this library is in {}, in this folder.",
                               path::Filename(paths.license)));
 
+    if (lib.manual_path) {
+        add_heading("User manual");
+        add_paragraph(fmt::Format(arena,
+                                  "The user manual for {} is {}, in this folder. You can also open it from "
+                                  "Floe's Help menu.",
+                                  lib.name,
+                                  lib.manual_path->str));
+    }
+
     add_heading("Learn more");
     add_link("Floe User Manual", FLOE_MANUAL_URL);
 

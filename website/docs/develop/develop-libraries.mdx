@@ -74,6 +74,7 @@ Let's look at the structure of a Floe sample library:
 ├── 📄slow.floe.lua
 ├── 📄Licence.pdf
 ├── 📄About Slow.html
+├── 📄Slow User Manual.pdf
 ├── 📁Samples/
 │   ├── 📄synth_sustain_c4.flac
 │   └── 📄synth_sustain_d4.flac
@@ -87,6 +88,7 @@ There's only one essential part of a Floe sample library: the `floe.lua` file. T
 The rest of the structure are conventions that are recommended but not required:
 - **Licence**: Sample libraries are recommended to have a file called Licence that describes the terms-of-use of the library. It can be any format: PDF, TXT, etc.
 - **About**: A file that describes the library. Any file format. Information about a library is useful for when someone might not have Floe's GUI available. Use this document to explain what the library contains, website links and any other information that might be useful. Floe's [packager tool](./packaging#packager-command-line-tool) can automatically generate this file.
+- **User manual**: An optional manual for the library. Set `manual_path` in [`floe.new_library`](./library-lua-scripts#floenew_library) and Floe lists it in its Help menu. PDF is recommended since Floe opens it in the default app for its file type.
 - **Library folder name**: The folder containing the `floe.lua` file should be named: "Developer - Library Name".
 - **Subfolders**: Subfolders are up to the developer. We recommend 'Samples' for audio files and 'Images' for images. These can have any number of subfolders. Your `floe.lua` file can reference any file in these subfolders.
 

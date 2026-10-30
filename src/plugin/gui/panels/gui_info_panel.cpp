@@ -157,6 +157,17 @@ static void LibrariesInfoPanel(GuiBuilder& builder, InfoPanelContext& context, I
                            }))
                 OpenFileInDefaultApp(*lib->license_path);
 
+        if (auto const manual_path = sample_lib::ManualFilesystemPath(*lib, builder.arena))
+            if (TextButton(builder,
+                           button_row,
+                           {
+                               .text = "User Manual",
+                               .tooltip = (String)fmt::Assign(buffer,
+                                                              "Open {} in its default app",
+                                                              path::Filename(*manual_path)),
+                           }))
+                OpenFileInDefaultApp(*manual_path);
+
         if (TextButton(
                 builder,
                 button_row,

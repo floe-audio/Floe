@@ -176,6 +176,19 @@ bool FilenameIsLibraryLicenseFile(String filename) {
     return IsEqualToCaseInsensitiveAscii(stem, "licence") || IsEqualToCaseInsensitiveAscii(stem, "license");
 }
 
+Optional<String> ManualFilesystemPath(Library const& lib, Allocator& allocator) {
+    if (!lib.manual_path) return k_nullopt;
+    switch (lib.file_format_specifics.tag) {
+        case FileFormat::Mdata: return k_nullopt;
+        case FileFormat::Lua: break;
+    }
+    auto const dir = path::Directory(lib.path);
+    if (!dir) return k_nullopt;
+    auto result = path::Join(allocator, Array {*dir, lib.manual_path->str});
+    if constexpr (IS_WINDOWS) Replace(result, '/', '\\');
+    return result;
+}
+
 Optional<FileFormat> DetermineFileFormat(String path) {
     auto const filename = path::Filename(path);
     if (FilenameIsFloeLuaFile(filename)) return FileFormat::Lua;

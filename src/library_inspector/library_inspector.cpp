@@ -109,6 +109,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
         auto const add = [&](String p) { referenced_paths.InsertGrowIfNeeded(arena, p); };
         if (lib->background_image_path) add((String)*lib->background_image_path);
         if (lib->icon_image_path) add((String)*lib->icon_image_path);
+        if (lib->manual_path) add((String)*lib->manual_path);
         for (auto [_, inst_ptr, _] : lib->insts_by_id)
             for (auto const& region : inst_ptr->regions)
                 add((String)region.path);

@@ -1707,6 +1707,7 @@ struct TableFields<Library> {
         Revision,
         BackgroundImagePath,
         IconImagePath,
+        ManualPath,
         BackgroundOverlay,
         Count,
     };
@@ -1838,6 +1839,16 @@ struct TableFields<Library> {
                     .lua_type = LUA_TSTRING,
                     .required = false,
                     .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.icon_image_path = PathFromTop(ctx); },
+                };
+            case Field::ManualPath:
+                return {
+                    .name = "manual_path",
+                    .description_sentence =
+                        "Path relative to this script for the library's user manual. Floe lists it in its Help menu and opens it in the default app for its file type, so a PDF is recommended.",
+                    .example = "Slow User Manual.pdf",
+                    .lua_type = LUA_TSTRING,
+                    .required = false,
+                    .set = [](SET_FIELD_VALUE_ARGS) { FIELD_OBJ.manual_path = PathFromTop(ctx); },
                 };
             case Field::BackgroundOverlay:
                 return {
@@ -3185,6 +3196,7 @@ ErrorCodeOr<void> WriteLuaLspDefintionsFile(Writer writer) {
 void ForEachReferencedFile(Library const& lib, FunctionRef<void(LibraryPath)> callback) {
     if (lib.background_image_path) callback(*lib.background_image_path);
     if (lib.icon_image_path) callback(*lib.icon_image_path);
+    if (lib.manual_path) callback(*lib.manual_path);
 
     for (auto [key, inst_ptr, _] : lib.insts_by_id)
         for (auto& region : (*inst_ptr).regions)
@@ -3398,6 +3410,7 @@ TEST_CASE(TestBasicFile) {
         author = "Sam",
         background_image_path = "images/background.jpg",
         icon_image_path = "image/icon.png",
+        manual_path = "docs/manual.pdf",
     })
     local instrument = floe.new_instrument(library, {
         name = "Inst1",
@@ -3447,6 +3460,14 @@ TEST_CASE(TestBasicFile) {
     CHECK_EQ(lib.tagline, "tagline"_s);
     CHECK_EQ(lib.author, "Sam"_s);
     CHECK_EQ(lib.revision, 1u);
+    REQUIRE(lib.manual_path);
+    CHECK_EQ(*lib.manual_path, "docs/manual.pdf"_s);
+    {
+        auto const manual = ManualFilesystemPath(lib, arena);
+        REQUIRE(manual);
+        CHECK(path::IsAbsolute(*manual));
+        CHECK(EndsWithSpan(*manual, IS_WINDOWS ? "docs\\manual.pdf"_s : "docs/manual.pdf"_s));
+    }
 
     REQUIRE(lib.insts_by_id.size);
 

@@ -266,6 +266,7 @@ struct Library {
     u32 revision {1};
     Optional<LibraryPath> background_image_path {};
     Optional<LibraryPath> icon_image_path {};
+    Optional<LibraryPath> manual_path {};
     struct BackgroundOverlay {
         struct Vignette {
             u32 colour {}; // ABGR, alpha encodes strength; 0 disables
@@ -374,6 +375,9 @@ bool FilenameIsFloeLuaFile(String filename);
 bool FilenameIsMdataFile(String filename);
 bool FilenameIsLibraryLicenseFile(String filename);
 Optional<FileFormat> DetermineFileFormat(String path);
+
+// Real filesystem path to the library's manual, Lua libraries only.
+Optional<String> ManualFilesystemPath(Library const& lib, Allocator& allocator);
 
 // only honoured by the lua system
 struct Options {

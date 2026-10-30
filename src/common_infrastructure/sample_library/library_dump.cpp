@@ -397,6 +397,10 @@ ErrorCodeOr<void> Dump(Context& ctx, sample_lib::Library const& lib, ArenaAlloca
         TRY(WriteKeyValue(ctx, "icon_image_path", (String)*lib.icon_image_path));
     else
         TRY(WriteKeyNull(ctx, "icon_image_path"));
+    if (lib.manual_path)
+        TRY(WriteKeyValue(ctx, "manual_path", (String)*lib.manual_path));
+    else
+        TRY(WriteKeyNull(ctx, "manual_path"));
     TRY(WriteKeyValue(ctx, "num_instruments", (s64)lib.insts_by_id.size));
     TRY(WriteKeyValue(ctx, "num_irs", (s64)lib.irs_by_id.size));
     TRY(WriteKeyValue(ctx, "num_regions", (s64)lib.num_regions));

@@ -39,7 +39,7 @@ static Optional<ImageID> LogoImage(GuiState& g) {
     return g.floe_logo_image;
 }
 
-static void DoDotsMenu(GuiState& g) {
+static void DoDotsMenu(GuiState& g, GuiFrameContext const& frame_context) {
     auto const root = DoBox(g.builder,
                             {
                                 .layout {
@@ -187,15 +187,50 @@ static void DoDotsMenu(GuiState& g) {
 
     MenuDivider(g.builder, root);
 
-    if (MenuItem(g.builder,
-                 root,
-                 {
-                     .text = "Help",
-                     .tooltip = "Open Floe's documentation website"_s,
-                 })
-            .button_fired) {
-        OpenUrlInBrowser("https://floe.audio/docs/getting-started/quick-start-guide");
-    }
+    MenuSubmenuItem(
+        g.builder,
+        root,
+        {
+            .text = "Help",
+            .do_submenu_items =
+                [&g, libraries = frame_context.libraries](Box submenu_root) {
+                    if (MenuItem(g.builder,
+                                 submenu_root,
+                                 {
+                                     .text = "Floe Online Help",
+                                     .tooltip = "Open Floe's documentation website"_s,
+                                     .no_icon_gap = true,
+                                 })
+                            .button_fired) {
+                        OpenUrlInBrowser("https://floe.audio/docs/getting-started/quick-start-guide");
+                    }
+
+                    bool divider_added = false;
+                    for (auto const& lib : libraries) {
+                        auto const manual_path = sample_lib::ManualFilesystemPath(*lib, g.builder.arena);
+                        if (!manual_path) continue;
+
+                        if (!divider_added) {
+                            MenuDivider(g.builder, submenu_root);
+                            divider_added = true;
+                        }
+
+                        if (MenuItem(g.builder,
+                                     submenu_root,
+                                     {
+                                         .text = fmt::Format(g.builder.arena, "{} User Manual", lib->name),
+                                         .tooltip = (String)fmt::Format(g.builder.arena,
+                                                                        "Open {} in its default app",
+                                                                        path::Filename(*manual_path)),
+                                         .no_icon_gap = true,
+                                     },
+                                     Hash(lib->id))
+                                .button_fired) {
+                            OpenFileInDefaultApp(*manual_path);
+                        }
+                    }
+                },
+        });
 }
 
 static Box DoTopPanelIconButton(GuiBuilder& builder,
@@ -721,7 +756,7 @@ static void DoTopPanel(GuiBuilder& builder, GuiState& g, GuiFrameContext const& 
         if (builder.imgui.IsPopupMenuOpen(popup_id))
             DoBoxViewport(builder,
                           {
-                              .run = [&g](GuiBuilder&) { DoDotsMenu(g); },
+                              .run = [&g, &frame_context](GuiBuilder&) { DoDotsMenu(g, frame_context); },
                               .bounds = dots_button,
                               .imgui_id = popup_id,
                               .viewport_config = k_default_popup_menu_viewport,
