@@ -12,6 +12,7 @@ import useAssetUrl from '@site/src/components/useAssetUrl';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faWindows, faApple, faLinux } from '@fortawesome/free-brands-svg-icons';
 import packageDatabase from '@site/static/package-database.json';
+import generatedData from '@site/static/generated-data.json';
 import styles from './index.module.css';
 
 function HeroSection() {
@@ -231,7 +232,7 @@ export default function Home() {
                     bullets={[
                         '3-layer architecture',
                         'Powerful granular synthesis',
-                        '11 reorderable effects',
+                        `${generatedData['effects-count']} reorderable effects`,
                         'Per-layer arpeggiators',
                         'Add loops with crossfade',
                         'Envelopes, filters, LFOs',
