@@ -433,11 +433,112 @@ struct BgfxRenderer : public Renderer {
             last_window_size = window_size;
         }
 
-        // Setup view
         bgfx::setViewName(k_view_id, "Floe GUI");
-        bgfx::setViewMode(k_view_id, bgfx::ViewMode::Sequential);
-        bgfx::setViewFrameBuffer(k_view_id, window_framebuffer);
-        bgfx::setViewClear(k_view_id, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x303030ff, 1.0f, 0);
+        SubmitDrawLists(k_view_id, window_framebuffer, draw_lists, window_size);
+
+        // Present frame
+        bgfx::frame();
+
+        return k_success;
+    }
+
+    Optional<ScreenshotPixels> Screenshot(Span<DrawList*> draw_lists,
+                                          Optional<Rect> region,
+                                          UiSize window_size,
+                                          Allocator& arena) override {
+        ZoneScoped;
+        if (!bgfx::isValid(window_framebuffer)) return k_nullopt;
+        ASSERT(window_size == last_window_size);
+
+        auto const caps = bgfx::getCaps();
+        ASSERT(!caps->originBottomLeft);
+        if (!(caps->supported & BGFX_CAPS_TEXTURE_BLIT) || !(caps->supported & BGFX_CAPS_TEXTURE_READ_BACK)) {
+            LogError(ModuleName::Bgfx, "Screenshot needs texture blit and read-back support");
+            return k_nullopt;
+        }
+
+        int x = 0;
+        int y = 0;
+        int w = window_size.width;
+        int h = window_size.height;
+        if (region) {
+            x = Max(0, (int)region->x);
+            y = Max(0, (int)region->y);
+            w = Min((int)region->w, (int)window_size.width - x);
+            h = Min((int)region->h, (int)window_size.height - y);
+        }
+        if (w <= 0 || h <= 0) return k_nullopt;
+
+        auto const read_back_texture = bgfx::createTexture2D((u16)w,
+                                                             (u16)h,
+                                                             false,
+                                                             1,
+                                                             bgfx::TextureFormat::RGBA8,
+                                                             BGFX_TEXTURE_BLIT_DST | BGFX_TEXTURE_READ_BACK);
+        if (!bgfx::isValid(read_back_texture)) {
+            LogError(ModuleName::Bgfx, "Failed to create screenshot read-back texture");
+            return k_nullopt;
+        }
+        DEFER { bgfx::destroy(read_back_texture); };
+
+        // A window framebuffer is a swap chain which can't be read back, so we render the same draw lists
+        // again into a texture. Offscreen, the rendered contents persist in the framebuffer texture because
+        // the GUI view isn't touched again until the next Render.
+        auto const source_framebuffer = ({
+            bgfx::FrameBufferHandle fb = window_framebuffer;
+            if (!offscreen) {
+                fb = CreateFramebuffer(nullptr, window_size);
+                if (!bgfx::isValid(fb)) {
+                    LogError(ModuleName::Bgfx, "Failed to create screenshot framebuffer");
+                    return k_nullopt;
+                }
+                bgfx::setViewName(k_screenshot_view_id, "Floe GUI Screenshot");
+                SubmitDrawLists(k_screenshot_view_id, fb, draw_lists, window_size);
+            }
+            fb;
+        });
+        DEFER {
+            if (offscreen) return;
+            bgfx::setViewFrameBuffer(k_screenshot_view_id, BGFX_INVALID_HANDLE);
+            bgfx::destroy(source_framebuffer);
+        };
+
+        bgfx::blit(k_blit_view_id,
+                   read_back_texture,
+                   0,
+                   0,
+                   bgfx::getTexture(source_framebuffer),
+                   (u16)x,
+                   (u16)y,
+                   (u16)w,
+                   (u16)h);
+
+        auto const rgba = arena.AllocateExactSizeUninitialised<u8>((usize)w * (usize)h * 4);
+        auto const ready_frame = bgfx::readTexture(read_back_texture, rgba.data);
+        while (bgfx::frame() < ready_frame) {
+        }
+
+        auto const rgb = arena.AllocateExactSizeUninitialised<u8>((usize)w * (usize)h * 3);
+        for (auto const pixel_index : Range((usize)w * (usize)h)) {
+            rgb[(pixel_index * 3) + 0] = rgba[(pixel_index * 4) + 0];
+            rgb[(pixel_index * 3) + 1] = rgba[(pixel_index * 4) + 1];
+            rgb[(pixel_index * 3) + 2] = rgba[(pixel_index * 4) + 2];
+        }
+
+        return ScreenshotPixels {
+            .rgb = rgb,
+            .size = {(u16)w, (u16)h},
+        };
+    }
+
+    void SubmitDrawLists(bgfx::ViewId view_id,
+                         bgfx::FrameBufferHandle framebuffer,
+                         Span<DrawList*> draw_lists,
+                         UiSize window_size) {
+        // Setup view
+        bgfx::setViewMode(view_id, bgfx::ViewMode::Sequential);
+        bgfx::setViewFrameBuffer(view_id, framebuffer);
+        bgfx::setViewClear(view_id, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x303030ff, 1.0f, 0);
 
         // Setup orthographic projection matrix to transform from pixel coordinates to clip space
         auto const caps = bgfx::getCaps();
@@ -451,8 +552,8 @@ struct BgfxRenderer : public Renderer {
                      1000.0f,
                      0.0f,
                      caps->homogeneousDepth);
-        bgfx::setViewTransform(k_view_id, nullptr, ortho);
-        bgfx::setViewRect(k_view_id, 0, 0, window_size.width, window_size.height);
+        bgfx::setViewTransform(view_id, nullptr, ortho);
+        bgfx::setViewRect(view_id, 0, 0, window_size.width, window_size.height);
 
         for (auto const* draw_list : draw_lists) {
             if (draw_list->vtx_buffer.size == 0 || draw_list->idx_buffer.size == 0) continue;
@@ -507,84 +608,11 @@ struct BgfxRenderer : public Renderer {
                 bgfx::setTexture(0, g_shared_renderer.texture_uniform, th);
                 bgfx::setVertexBuffer(0, &tvb, 0, num_vertices);
                 bgfx::setIndexBuffer(&tib, offset, cmd.elem_count);
-                bgfx::submit(k_view_id, g_shared_renderer.shader_program);
+                bgfx::submit(view_id, g_shared_renderer.shader_program);
 
                 offset += cmd.elem_count;
             }
         }
-
-        // Present frame
-        bgfx::frame();
-
-        return k_success;
-    }
-
-    // Only offscreen framebuffers are readable; window framebuffers are swap chains.
-    Optional<ScreenshotPixels>
-    Screenshot(Optional<Rect> region, UiSize window_size, Allocator& arena) override {
-        ZoneScoped;
-        if (!offscreen || !bgfx::isValid(window_framebuffer)) return k_nullopt;
-        ASSERT(window_size == last_window_size);
-
-        auto const caps = bgfx::getCaps();
-        ASSERT(!caps->originBottomLeft);
-        if (!(caps->supported & BGFX_CAPS_TEXTURE_BLIT) || !(caps->supported & BGFX_CAPS_TEXTURE_READ_BACK)) {
-            LogError(ModuleName::Bgfx, "Screenshot needs texture blit and read-back support");
-            return k_nullopt;
-        }
-
-        int x = 0;
-        int y = 0;
-        int w = window_size.width;
-        int h = window_size.height;
-        if (region) {
-            x = Max(0, (int)region->x);
-            y = Max(0, (int)region->y);
-            w = Min((int)region->w, (int)window_size.width - x);
-            h = Min((int)region->h, (int)window_size.height - y);
-        }
-        if (w <= 0 || h <= 0) return k_nullopt;
-
-        auto const read_back_texture = bgfx::createTexture2D((u16)w,
-                                                             (u16)h,
-                                                             false,
-                                                             1,
-                                                             bgfx::TextureFormat::RGBA8,
-                                                             BGFX_TEXTURE_BLIT_DST | BGFX_TEXTURE_READ_BACK);
-        if (!bgfx::isValid(read_back_texture)) {
-            LogError(ModuleName::Bgfx, "Failed to create screenshot read-back texture");
-            return k_nullopt;
-        }
-        DEFER { bgfx::destroy(read_back_texture); };
-
-        // The rendered contents persist in the framebuffer texture because the GUI view isn't touched again
-        // until the next Render.
-        bgfx::blit(k_blit_view_id,
-                   read_back_texture,
-                   0,
-                   0,
-                   bgfx::getTexture(window_framebuffer),
-                   (u16)x,
-                   (u16)y,
-                   (u16)w,
-                   (u16)h);
-
-        auto const rgba = arena.AllocateExactSizeUninitialised<u8>((usize)w * (usize)h * 4);
-        auto const ready_frame = bgfx::readTexture(read_back_texture, rgba.data);
-        while (bgfx::frame() < ready_frame) {
-        }
-
-        auto const rgb = arena.AllocateExactSizeUninitialised<u8>((usize)w * (usize)h * 3);
-        for (auto const pixel_index : Range((usize)w * (usize)h)) {
-            rgb[(pixel_index * 3) + 0] = rgba[(pixel_index * 4) + 0];
-            rgb[(pixel_index * 3) + 1] = rgba[(pixel_index * 4) + 1];
-            rgb[(pixel_index * 3) + 2] = rgba[(pixel_index * 4) + 2];
-        }
-
-        return ScreenshotPixels {
-            .rgb = rgb,
-            .size = {(u16)w, (u16)h},
-        };
     }
 
     static bgfx::FrameBufferHandle CreateFramebuffer(void* native_window, UiSize size) {
@@ -597,7 +625,8 @@ struct BgfxRenderer : public Renderer {
     }
 
     static inline u16 const k_view_id = 200;
-    static inline u16 const k_blit_view_id = k_view_id + 1;
+    static inline u16 const k_screenshot_view_id = k_view_id + 1;
+    static inline u16 const k_blit_view_id = k_view_id + 2;
 
     bool offscreen {};
     bool acquired_shared_renderer {};

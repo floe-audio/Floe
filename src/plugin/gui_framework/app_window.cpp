@@ -760,7 +760,10 @@ static void UpdateAndRender(AppWindow& window) {
         if (window.last_result.request_screenshot) {
             ArenaAllocator scratch {PageAllocator::Instance()};
             auto const& req = *window.last_result.request_screenshot;
-            if (auto const shot = window.renderer->Screenshot(req.rect, window_size, scratch)) {
+            if (auto const shot = window.renderer->Screenshot(window.last_result.draw_lists,
+                                                              req.rect,
+                                                              window_size,
+                                                              scratch)) {
                 DynamicArray<char> path {scratch};
                 if (req.output_path.size) {
                     dyn::AppendSpan(path, (String)req.output_path);

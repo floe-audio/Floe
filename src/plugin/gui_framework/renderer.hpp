@@ -47,11 +47,14 @@ struct Renderer {
         UiSize size;
     };
 
-    // Capture pixels from the most recently rendered frame. region is in framebuffer pixels (matching
-    // window_size used in Render); k_nullopt means the full window. Returns k_nullopt if the backend
-    // doesn't support screenshots or if the capture failed (errors are logged internally).
+    // Capture pixels from the most recently rendered frame. draw_lists must be the ones passed to that
+    // Render; backends that can't read back a presented window render them again offscreen. region is in
+    // framebuffer pixels (matching window_size used in Render); k_nullopt means the full window. Returns
+    // k_nullopt if the backend doesn't support screenshots or if the capture failed (errors are logged
+    // internally).
     virtual Optional<ScreenshotPixels>
-    Screenshot(Optional<Rect> region, UiSize window_size, Allocator& arena) {
+    Screenshot(Span<DrawList*> draw_lists, Optional<Rect> region, UiSize window_size, Allocator& arena) {
+        (void)draw_lists;
         (void)region;
         (void)window_size;
         (void)arena;

@@ -309,7 +309,7 @@ struct OpenGLRenderer : public Renderer {
     }
 
     Optional<ScreenshotPixels>
-    Screenshot(Optional<Rect> region, UiSize window_size, Allocator& arena) override {
+    Screenshot(Span<DrawList*>, Optional<Rect> region, UiSize window_size, Allocator& arena) override {
         ZoneScoped;
         TracyGpuZone("Screenshot");
 
