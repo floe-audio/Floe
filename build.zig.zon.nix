@@ -172,11 +172,11 @@ linkFarm name [
     };
   }
   {
-    name = "N-V-__8AALH6JABYuaPVS0eKybvSxLoVlNrO3snBSN4Z_Ctb";
+    name = "N-V-__8AAJZIJgCMkCLh4LB1j9MbgJDjf0-_OsF2UMswt5Hw";
     path = fetchZigArtifact {
       name = "clap_wrapper";
-      url = "git+https://github.com/free-audio/clap-wrapper#806bba0a5f792e3966b99c1561ab9952d3316d7c";
-      hash = "sha256-KgoZG+QUreefKF9QDj8bJWLL2PhxAP9/B+nCrWpjRzc=";
+      url = "git+https://github.com/free-audio/clap-wrapper#4585bc644d87aefc72615c5e23f84b2d55e5b4cb";
+      hash = "sha256-Rta6kCmcYBo3Qw3Lc0kJhUsPPejq8CdhtS5ZAJeMIZk=";
       unpack = true;
     };
   }
