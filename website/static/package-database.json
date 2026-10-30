@@ -408,8 +408,9 @@
     {
         "name": "Helsinki 1967 Tube/Ribbon Edition upright piano",
         "slug": "helsinki-1967",
-        "last_updated": "2026-10-11",
+        "last_updated": "2026-10-28",
         "developer": "Mikko Patama",
+        "demo_video": "http://mikkopatama.com/helsinki1967/Helsinki1967Floe.mp4"
         "developer_website": "https://www.mikkopatama.com/helsinki1967",
         "background_image": "https://mikkopatama.com/helsinki1967/img/piano.jpg",
         "attribution_required": false,
