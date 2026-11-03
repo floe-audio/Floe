@@ -114,6 +114,8 @@ Floe doesn't have the concept of 'groups' like other formats like SFZ or Kontakt
 ### `floe.midi_range_to_hundred_range` and `floe.midi_range_to_thousand_range`
 Floe prefers to use a range from 0 to 100 or 0 to 1000 (where the end value is exclusive, A.K.A. one-past the last) for velocity rather than MIDI 1.0's typical range of 0 to 127 (where the end value is inclusive). These functions convert from the MIDI range to the Floe range. Useful when converting existing libraries to Floe.
 
+Floe doesn't always receive MIDI's 1–127 velocity numbers. In VST3, and in some CLAP hosts, velocity arrives as a value between 0 and 1, which is why Floe uses its own range. For MIDI-style velocity layouts, use `midi_range_to_thousand_range`: it lands on the intended velocity in almost every case.
+
 <CodeBlock language="lua">
 {data["sample-library-example-lua:midi_range_to_hundred_range"] + "\n\n" + data["sample-library-example-lua:midi_range_to_thousand_range"]}
 </CodeBlock>
