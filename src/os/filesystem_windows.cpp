@@ -569,8 +569,8 @@ MutableString KnownDirectory(Allocator& a, KnownDirectoryType type, KnownDirecto
             config.fallback_absolute = "C:\\ProgramData";
             break;
         case KnownDirectoryType::MiragePreferences:
-            config.folder_id = FOLDERID_RoamingAppData;
-            config.fallback_user = "AppData\\Roaming";
+            config.folder_id = FOLDERID_LocalAppData;
+            config.fallback_user = "AppData\\Local";
             break;
         case KnownDirectoryType::MiragePreferencesAlternate:
             config.folder_id = FOLDERID_RoamingAppData;

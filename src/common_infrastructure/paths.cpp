@@ -37,13 +37,9 @@ static Span<String> PossiblePrefFilePaths(ArenaAllocator& arena) {
                                                          {.create = false, .error_log = nullptr}));
         };
 
-        // C:/ProgramData/FrozenPlain/Mirage/mirage.json
-        // /Library/Application Support/FrozenPlain/Mirage/mirage.json
-        add_path(KnownDirectoryType::MirageGlobalPreferences,
-                 Array {"FrozenPlain"_s, "Mirage", "Settings"},
-                 "mirage.json"_s);
+        // Mirage used its per-user file if it existed, and only fell back to the global one otherwise.
 
-        // ~/AppData/Roaming/FrozenPlain/Mirage/mirage.json
+        // ~/AppData/Local/FrozenPlain/Mirage/mirage.json
         // ~/Music/Audio Music Apps/Plug-In Settings/FrozenPlain/mirage.json
         {
             DynamicArrayBounded<String, 2> sub_paths;
@@ -59,6 +55,12 @@ static Span<String> PossiblePrefFilePaths(ArenaAllocator& arena) {
                      Array {"FrozenPlain"_s, "Mirage"},
                      "mirage.json");
         }
+
+        // C:/ProgramData/FrozenPlain/Mirage/Settings/mirage.json
+        // /Library/Application Support/FrozenPlain/Mirage/Settings/mirage.json
+        add_path(KnownDirectoryType::MirageGlobalPreferences,
+                 Array {"FrozenPlain"_s, "Mirage", "Settings"},
+                 "mirage.json"_s);
     }
 
     return result.ToOwnedSpan();
