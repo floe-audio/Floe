@@ -180,7 +180,9 @@ PreferencesTable ParseLegacyPreferencesFile(String file_data, ArenaAllocator& ar
             if (SetIfMatchingRef(event, "presets_folder", folder)) {
                 // The old format only allowed for a single presets folder so we can just set it directly.
                 if (path::IsAbsolute(*folder) && IsValidUtf8(*folder))
-                    table.InsertGrowIfNeeded(arena, key::k_extra_presets_folder, arena.New<Value>(*folder));
+                    table.InsertGrowIfNeeded(arena,
+                                             key::k_extra_presets_folder,
+                                             arena.New<Value>((String)arena.Clone(*folder)));
                 return true;
             }
             if (json::SetIfMatchingArray(
@@ -228,11 +230,12 @@ PreferencesTable ParseLegacyPreferencesFile(String file_data, ArenaAllocator& ar
                                             path && path::Equal(*path, *dir))
                                             return true;
 
-                                    SinglyLinkedListPrepend(*existing, arena.New<Value>(*dir));
+                                    SinglyLinkedListPrepend(*existing,
+                                                            arena.New<Value>((String)arena.Clone(*dir)));
                                 } else
                                     table.InsertGrowIfNeeded(arena,
                                                              key::k_extra_libraries_folder,
-                                                             arena.New<Value>(*dir));
+                                                             arena.New<Value>((String)arena.Clone(*dir)));
                             }
                             return true;
                         }
@@ -1183,6 +1186,55 @@ TEST_CASE(TestLegacyPreferences) {
     return k_success;
 }
 
+TEST_CASE(TestLegacyPreferencesEscapedPaths) {
+    // Mirage on Windows wrote paths with escaped backslashes. "\/" is used here to exercise the same JSON
+    // unescaping on every OS.
+    DynamicArray<char> json {R"foo({
+    "presets_folder": "{ROOT}\/Mirage Presets",
+    "libraries": [
+        {
+            "name": "Slow",
+            "path": "{ROOT}\/Mirage Libraries\/slow.mdata"
+        },
+        {
+            "name": "Wraith",
+            "path": "{ROOT}\/Other Libraries\/wraith.mdata"
+        }
+    ]
+})foo"_s,
+                             tester.scratch_arena};
+    auto const root_dir = IS_WINDOWS ? "C:"_s : ""_s;
+    dyn::Replace(json, "{ROOT}"_s, root_dir);
+
+    auto const table = ParseLegacyPreferencesFile(json, tester.scratch_arena);
+
+    auto const expected_presets_dir = fmt::Format(tester.scratch_arena, "{}/Mirage Presets"_s, root_dir);
+    auto const expected_lib_dir_1 = fmt::Format(tester.scratch_arena, "{}/Mirage Libraries"_s, root_dir);
+    auto const expected_lib_dir_2 = fmt::Format(tester.scratch_arena, "{}/Other Libraries"_s, root_dir);
+
+    {
+        auto const presets_folder = LookupString(table, key::k_extra_presets_folder);
+        REQUIRE(presets_folder);
+        CHECK_EQ(*presets_folder, expected_presets_dir);
+    }
+
+    {
+        auto const v = LookupValues(table, key::k_extra_libraries_folder);
+        REQUIRE(v);
+
+        usize num_dirs = 0;
+        for (auto i = &*v; i; i = i->next) {
+            ++num_dirs;
+            REQUIRE(num_dirs < 100);
+            auto const path = i->Get<String>();
+            CHECK(path == expected_lib_dir_1 || path == expected_lib_dir_2);
+        }
+        CHECK_EQ(num_dirs, 2u);
+    }
+
+    return k_success;
+}
+
 TEST_CASE(TestPreferences) {
     SUBCASE("read/write basics") {
 
@@ -1766,5 +1818,6 @@ TEST_CASE(TestPreferences) {
 
 TEST_REGISTRATION(RegisterPreferencesTests) {
     REGISTER_TEST(prefs::TestLegacyPreferences);
+    REGISTER_TEST(prefs::TestLegacyPreferencesEscapedPaths);
     REGISTER_TEST(prefs::TestPreferences);
 }
