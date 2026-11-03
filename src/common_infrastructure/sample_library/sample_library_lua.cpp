@@ -2109,20 +2109,30 @@ static int AddNamedKeyRange(lua_State* lua) {
 
 template <Integral T>
 static int MidiRangeToNewRange(lua_State* lua) {
-    // This function takes 1 arg, a table of 2 MIDI note numbers
+    // This function takes 1 arg, a table of 2 MIDI velocities
     luaL_checktype(lua, 1, LUA_TTABLE);
     if (lua_rawlen(lua, 1) != 2)
-        return luaL_error(lua, "MIDI range conversion expects a table with exactly 2 elements");
+        return luaL_error(lua, "MIDI velocity range conversion expects a table with exactly 2 elements");
     lua_rawgeti(lua, 1, 1);
     auto const start = luaL_checkinteger(lua, -1);
     lua_pop(lua, 1);
     lua_rawgeti(lua, 1, 2);
     auto const end = luaL_checkinteger(lua, -1);
     lua_pop(lua, 1);
-    if (start < 0 || start > 127 || end < 0 || end > 127 || start >= end)
-        return luaL_error(lua, "MIDI range conversion expects a valid MIDI range [0, 127]");
+    if (start < 0 || start > 127 || end < 0 || end > 127)
+        return luaL_error(lua, "MIDI velocity range conversion expects values from 0 to 127");
+    if (start > end)
+        return luaL_error(
+            lua,
+            "MIDI velocity range conversion expects the start to be less than or equal to the end");
 
     auto const new_range = detail::MapMidiVelocityRangeToNewRange<T>((s8)start, (s8)end);
+    if (new_range.start >= new_range.end)
+        return luaL_error(lua,
+                          "MIDI velocity range { %d, %d } is too narrow to convert%s",
+                          (int)start,
+                          (int)end,
+                          Same<T, u8> ? ", use midi_range_to_thousand_range instead" : "");
     // Returns a table with 2 elements: start and end
     lua_newtable(lua);
     lua_pushinteger(lua, new_range.start);
@@ -2791,7 +2801,7 @@ struct LuaCodePrinter {
                         .lua_type = LUA_TTABLE,
                     },
                 .description =
-                    "Converts a MIDI note range (where the end value is inclusive) to Floe's 0-100 range (where the end value is exclusive, A.K.A, one-past the last). Takes a table with two integers for start and end. Returns the same format but remapped.",
+                    "Converts a MIDI velocity range (where the end value is inclusive) to Floe's 0-100 range (where the end value is exclusive, A.K.A, one-past the last). Takes a table with two integers for start and end. Returns the same format but remapped. 0-100 can't represent every single MIDI velocity, so narrow ranges may error; use midi_range_to_thousand_range for those.",
             },
             {
                 .name = "midi_range_to_thousand_range",
@@ -2809,9 +2819,10 @@ struct LuaCodePrinter {
                         .lua_type = LUA_TTABLE,
                     },
                 .description =
-                    "Converts a MIDI note range (where the end value is inclusive) to Floe's 0-1000 range "
+                    "Converts a MIDI velocity range (where the end value is inclusive) to Floe's 0-1000 range "
                     "(where the end value is exclusive, A.K.A, one-past the last). Takes a table with two "
-                    "integers for start and end. Returns the same format but remapped.",
+                    "integers for start and end, for example { 64, 64 } for velocity 64 only. Returns the "
+                    "same format but remapped.",
             },
 
         });
@@ -3621,6 +3632,43 @@ TEST_CASE(TestErrorHandling) {
     return k_success;
 }
 
+TEST_CASE(TestMidiVelocityRangeConversion) {
+    auto& scratch_arena = tester.scratch_arena;
+    ArenaAllocator result_arena {PageAllocator::Instance()};
+    DynamicArray<char> printed {scratch_arena};
+
+    auto _ = ReadLua(R"aaa(
+    local function show(fn, range)
+        local ok, result = pcall(fn, range)
+        if ok then print(result[1], result[2]) else print("error") end
+    end
+    show(floe.midi_range_to_thousand_range, { 1, 64 })
+    show(floe.midi_range_to_thousand_range, { 64, 64 })
+    show(floe.midi_range_to_thousand_range, { 0, 0 })
+    show(floe.midi_range_to_thousand_range, { 65, 64 })
+    show(floe.midi_range_to_thousand_range, { 1, 128 })
+    show(floe.midi_range_to_hundred_range, { 1, 64 })
+    show(floe.midi_range_to_hundred_range, { 63, 63 })
+    show(floe.midi_range_to_hundred_range, { 64, 64 })
+    return {}
+    )aaa",
+                     FAKE_ABSOLUTE_PATH_PREFIX "test.lua",
+                     result_arena,
+                     scratch_arena,
+                     {.print_capture = dyn::WriterFor(printed)});
+
+    CHECK_EQ(String(printed),
+             "0\t507\n"
+             "500\t507\n"
+             "error\n"
+             "error\n"
+             "error\n"
+             "0\t50\n"
+             "49\t50\n"
+             "error\n"_s);
+    return k_success;
+}
+
 TEST_CASE(TestSlices) {
     auto& arena = tester.scratch_arena;
     ArenaAllocator result_arena {PageAllocator::Instance()};
@@ -3937,5 +3985,6 @@ TEST_REGISTRATION(RegisterLibraryLuaTests) {
     REGISTER_TEST(sample_lib::TestIncorrectParameters);
     REGISTER_TEST(sample_lib::TestErrorHandling);
     REGISTER_TEST(sample_lib::TestAutoMapKeyRange);
+    REGISTER_TEST(sample_lib::TestMidiVelocityRangeConversion);
     REGISTER_TEST(sample_lib::TestSlices);
 }
