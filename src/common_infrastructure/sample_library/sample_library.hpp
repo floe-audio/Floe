@@ -51,7 +51,18 @@ struct Range {
     T end; // non-inclusive, A.K.A. one-past the last
 };
 
-enum class TriggerEvent : u8 { NoteOn, NoteOff, Count };
+enum class TriggerEvent : u8 { NoteOn, NoteOff, NoteEnd, Count };
+
+// One-shot regions have no volume envelope, never loop, and play out entirely.
+constexpr bool IsOneShotTriggerEvent(TriggerEvent e) {
+    switch (e) {
+        case TriggerEvent::NoteOn: return false;
+        case TriggerEvent::NoteOff:
+        case TriggerEvent::NoteEnd: return true;
+        case TriggerEvent::Count: break;
+    }
+    return false;
+}
 
 enum class LoopMode : u8 { Standard, PingPong, Count };
 

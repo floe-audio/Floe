@@ -364,7 +364,7 @@ void UpdateLoopInfo(Voice& v) {
         if (s.source_data.tag != InstrumentType::Sampler) continue;
 
         auto& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
-        if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff) continue;
+        if (sample_lib::IsOneShotTriggerEvent(sampler.region->trigger.trigger_event)) continue;
 
         UpdatePlayhead(sampler.playhead,
                        LoopForSource(*v.controller, sampler),
@@ -615,9 +615,9 @@ void StartVoice(VoicePool& pool,
                                   voice_controller.reverse,
                                   num_frames);
                 } else if (voice_controller.play_mode == param_values::PlayMode::GranularFixed &&
-                           s_params.region.trigger.trigger_event != sample_lib::TriggerEvent::NoteOff) {
+                           !sample_lib::IsOneShotTriggerEvent(s_params.region.trigger.trigger_event)) {
                     // GranularFixed ignores loops and sample offset; position is user-controlled.
-                    // Note-off triggered samples use the standard playback path instead.
+                    // One-shot (release) samples use the standard playback path instead.
                     ResetPlayhead(s_sampler.playhead,
                                   0,
                                   k_nullopt,
@@ -628,11 +628,11 @@ void StartVoice(VoicePool& pool,
                                                            s_params.region.audio_props.start_offset_frames,
                                                            s_sampler.data->num_frames);
 
-                    // Note-off samples never loop: with no envelope to end them, a loop would sustain
+                    // One-shot samples never loop: with no envelope to end them, a loop would sustain
                     // them forever.
                     auto const loop = ({
                         Optional<BoundsCheckedLoop> l {};
-                        if (s_params.region.trigger.trigger_event != sample_lib::TriggerEvent::NoteOff)
+                        if (!sample_lib::IsOneShotTriggerEvent(s_params.region.trigger.trigger_event))
                             l = LoopForSource(voice_controller, s_sampler);
                         l;
                     });
@@ -775,8 +775,8 @@ static f32 GrainSpawnIntervalRatio(f32 density) {
 
 static bool IsGranularSampleSource(VoiceSoundSource const& s) {
     return s.is_active && s.source_data.tag == InstrumentType::Sampler &&
-           s.source_data.Get<VoiceSoundSource::SampleSource>().region->trigger.trigger_event !=
-               sample_lib::TriggerEvent::NoteOff;
+           !sample_lib::IsOneShotTriggerEvent(
+               s.source_data.Get<VoiceSoundSource::SampleSource>().region->trigger.trigger_event);
 }
 
 struct VoiceProcessor {
@@ -836,7 +836,7 @@ struct VoiceProcessor {
                     case InstrumentType::None: break;
                     case InstrumentType::Sampler: {
                         auto const& sampler = s.source_data.Get<VoiceSoundSource::SampleSource>();
-                        if (sampler.region->trigger.trigger_event == sample_lib::TriggerEvent::NoteOff)
+                        if (sample_lib::IsOneShotTriggerEvent(sampler.region->trigger.trigger_event))
                             continue;
                         position_for_gui = sampler.playhead.RealFramePos(sampler.data->num_frames)
                                                .ValueOr(sampler.data->num_frames) /
@@ -1509,10 +1509,9 @@ struct VoiceProcessor {
             switch (s.source_data.tag) {
                 case InstrumentType::Sampler: {
                     bool ok;
-                    auto const is_note_off_trigger =
-                        s.source_data.Get<VoiceSoundSource::SampleSource>().region->trigger.trigger_event ==
-                        sample_lib::TriggerEvent::NoteOff;
-                    if (is_granular && !is_note_off_trigger)
+                    auto const is_one_shot_trigger = sample_lib::IsOneShotTriggerEvent(
+                        s.source_data.Get<VoiceSoundSource::SampleSource>().region->trigger.trigger_event);
+                    if (is_granular && !is_one_shot_trigger)
                         ok = AddGranularSampleDataOntoBuffer(voice,
                                                              s,
                                                              source_index,

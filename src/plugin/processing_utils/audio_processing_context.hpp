@@ -71,13 +71,48 @@ struct AudioProcessingContext {
 };
 
 struct NoteEvent {
+    // Decided when the off event is created because the key and pedal state must be read at that moment.
+    struct ReleaseTriggers {
+        bool note_off_regions;
+        bool note_end_regions;
+        f32 note_end_velocity;
+    };
+
     f32 velocity;
     u32 offset;
     MidiChannelNote note;
-    bool created_by_cc64;
+    ReleaseTriggers release_triggers;
     enum class Type : u8 { On, Off } type;
     s8 exclusively_for_layer = -1;
 };
+
+// Call after the key has been released in the note state.
+inline NoteEvent::ReleaseTriggers KeyReleaseTriggers(MidiNoteState const& note_state, MidiChannelNote note) {
+    return {
+        .note_off_regions = true,
+        .note_end_regions = !note_state.sustain_pedal_on.Get(note.channel),
+        .note_end_velocity = note_state.velocities[note.channel][note.note],
+    };
+}
+
+// For a note returned from HandleSustainPedalOff. A key that's still held keeps sounding.
+inline NoteEvent::ReleaseTriggers SustainPedalReleaseTriggers(MidiNoteState const& note_state,
+                                                              MidiChannelNote note) {
+    return {
+        .note_off_regions = false,
+        .note_end_regions = !note_state.keys_held[note.channel].Get(note.note),
+        .note_end_velocity = note_state.velocities[note.channel][note.note],
+    };
+}
+
+inline NoteEvent::ReleaseTriggers AllNotesOffReleaseTriggers(MidiNoteState const& note_state,
+                                                             MidiChannelNote note) {
+    return {
+        .note_off_regions = true,
+        .note_end_regions = true,
+        .note_end_velocity = note_state.velocities[note.channel][note.note],
+    };
+}
 
 // IMPROVE: it would be nice to not have this limitation even though rare.
 constexpr usize k_max_note_events = 256;

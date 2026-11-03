@@ -326,8 +326,8 @@ static void TriggerVoicesIfNeeded(LayerProcessor& layer,
         waveform.type = *w;
     }
 
-    p.disable_vol_env = args.trigger_event == sample_lib::TriggerEvent::NoteOff;
-    p.track_expression = args.trigger_event != sample_lib::TriggerEvent::NoteOff;
+    p.disable_vol_env = sample_lib::IsOneShotTriggerEvent(args.trigger_event);
+    p.track_expression = !sample_lib::IsOneShotTriggerEvent(args.trigger_event);
     p.initial_pitch = layer.voice_controller.tune_semitones;
     p.midi_key_trigger = args.note;
     p.note_num = note_for_samples;
@@ -412,7 +412,7 @@ static void LayerHandleNoteOff(LayerProcessor& layer,
                                VoicePool& voice_pool,
                                MidiChannelNote note,
                                f32 velocity,
-                               bool triggered_by_cc64) {
+                               NoteEvent::ReleaseTriggers release_triggers) {
     if (layer.monophonic_latch && NoNotesHeld(context)) {
         for (auto& v : voice_pool.EnumerateActiveLayerVoices(layer.voice_controller))
             EndVoice(v);
@@ -426,8 +426,7 @@ static void LayerHandleNoteOff(LayerProcessor& layer,
 
     if (ShouldEndNote(layer, context, note)) NoteOff(voice_pool, layer.voice_controller, note);
 
-    // Some voices trigger on note-off.
-    if (!triggered_by_cc64)
+    if (release_triggers.note_off_regions)
         TriggerVoicesIfNeeded(layer,
                               context,
                               voice_pool,
@@ -435,6 +434,16 @@ static void LayerHandleNoteOff(LayerProcessor& layer,
                                   .trigger_event = sample_lib::TriggerEvent::NoteOff,
                                   .note = note,
                                   .velocity = velocity,
+                                  .offset = 0,
+                              });
+    if (release_triggers.note_end_regions)
+        TriggerVoicesIfNeeded(layer,
+                              context,
+                              voice_pool,
+                              {
+                                  .trigger_event = sample_lib::TriggerEvent::NoteEnd,
+                                  .note = note,
+                                  .velocity = release_triggers.note_end_velocity,
                                   .offset = 0,
                               });
 }
@@ -469,18 +478,23 @@ static void HandleArpCommands(LayerProcessor& layer,
             case NoteEvent::Type::Off: {
                 NoteOff(voice_pool, layer.voice_controller, cmd.note);
 
-                // Trigger note-off (release) samples as if the user had released the key. Skipped in
-                // sliced mode, where the arp steps through one region's slices rather than playing notes.
+                // Trigger release samples as if the user had released the key; the step's voice ends
+                // regardless of the sustain pedal, so note-end fires too. Skipped in sliced mode, where the
+                // arp steps through one region's slices rather than playing notes.
                 if (trigger_release_samples && !SlicesForInstrument(layer.audio_thread_inst))
-                    TriggerVoicesIfNeeded(layer,
-                                          context,
-                                          voice_pool,
-                                          {
-                                              .trigger_event = sample_lib::TriggerEvent::NoteOff,
-                                              .note = cmd.note,
-                                              .velocity = cmd.velocity,
-                                              .offset = cmd.offset,
-                                          });
+                    for (auto const trigger_event : Array<sample_lib::TriggerEvent, 2> {
+                             sample_lib::TriggerEvent::NoteOff,
+                             sample_lib::TriggerEvent::NoteEnd,
+                         })
+                        TriggerVoicesIfNeeded(layer,
+                                              context,
+                                              voice_pool,
+                                              {
+                                                  .trigger_event = trigger_event,
+                                                  .note = cmd.note,
+                                                  .velocity = cmd.velocity,
+                                                  .offset = cmd.offset,
+                                              });
                 break;
             }
         }
@@ -947,7 +961,7 @@ void ProcessLayerChanges(LayerProcessor& layer,
                                            voice_pool,
                                            note.note,
                                            note.velocity,
-                                           note.created_by_cc64);
+                                           note.release_triggers);
                         break;
                     }
                 }

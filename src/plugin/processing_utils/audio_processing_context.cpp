@@ -64,4 +64,65 @@ TEST_CASE(TestMidiNoteStateSustainPedal) {
     return k_success;
 }
 
-TEST_REGISTRATION(RegisterMidiNoteStateTests) { REGISTER_TEST(TestMidiNoteStateSustainPedal); }
+TEST_CASE(TestReleaseTriggers) {
+    MidiNoteState state {};
+    MidiChannelNote const note {.note = 60, .channel = 0};
+
+    SUBCASE("key release without the pedal triggers both") {
+        state.NoteOn(note, 0.7f);
+        state.NoteOff(note);
+        auto const triggers = KeyReleaseTriggers(state, note);
+        CHECK(triggers.note_off_regions);
+        CHECK(triggers.note_end_regions);
+        CHECK_EQ(triggers.note_end_velocity, 0.7f);
+    }
+
+    SUBCASE("key release with the pedal down triggers note-off only") {
+        state.NoteOn(note, 0.7f);
+        state.HandleSustainPedalOn(0);
+        state.NoteOff(note);
+        auto const triggers = KeyReleaseTriggers(state, note);
+        CHECK(triggers.note_off_regions);
+        CHECK(!triggers.note_end_regions);
+    }
+
+    SUBCASE("pedal release after the key was released triggers note-end at note-on velocity") {
+        state.HandleSustainPedalOn(0);
+        state.NoteOn(note, 0.3f);
+        state.NoteOff(note);
+        REQUIRE(state.HandleSustainPedalOff(0).Get(60));
+        auto const triggers = SustainPedalReleaseTriggers(state, note);
+        CHECK(!triggers.note_off_regions);
+        CHECK(triggers.note_end_regions);
+        CHECK_EQ(triggers.note_end_velocity, 0.3f);
+    }
+
+    SUBCASE("pedal release while the key is still held triggers nothing") {
+        state.NoteOn(note, 0.3f);
+        state.HandleSustainPedalOn(0);
+        REQUIRE(state.HandleSustainPedalOff(0).Get(60));
+        auto const triggers = SustainPedalReleaseTriggers(state, note);
+        CHECK(!triggers.note_off_regions);
+        CHECK(!triggers.note_end_regions);
+
+        state.NoteOff(note);
+        CHECK(KeyReleaseTriggers(state, note).note_end_regions);
+    }
+
+    SUBCASE("all-notes-off triggers both") {
+        state.NoteOn(note, 0.5f);
+        state.HandleSustainPedalOn(0);
+        REQUIRE(state.HandleAllNotesOff(0).Get(60));
+        auto const triggers = AllNotesOffReleaseTriggers(state, note);
+        CHECK(triggers.note_off_regions);
+        CHECK(triggers.note_end_regions);
+        CHECK_EQ(triggers.note_end_velocity, 0.5f);
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterMidiNoteStateTests) {
+    REGISTER_TEST(TestMidiNoteStateSustainPedal);
+    REGISTER_TEST(TestReleaseTriggers);
+}

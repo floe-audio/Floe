@@ -837,14 +837,17 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
             if (processor.audio_processing_context.mpe.IsMemberChannel(chan_note.channel))
                 processor.audio_processing_context.pitchwheel_position[chan_note.channel] = 0.0f;
 
-            AppendNoteOffEvent(processor,
-                               changes,
-                               {
-                                   .velocity = vel,
-                                   .offset = event.time - block_start_frame,
-                                   .note = chan_note,
-                                   .type = NoteEvent::Type::Off,
-                               });
+            AppendNoteOffEvent(
+                processor,
+                changes,
+                {
+                    .velocity = vel,
+                    .offset = event.time - block_start_frame,
+                    .note = chan_note,
+                    .release_triggers =
+                        KeyReleaseTriggers(processor.audio_processing_context.midi_note_state, chan_note),
+                    .type = NoteEvent::Type::Off,
+                });
             break;
         }
 
@@ -961,6 +964,9 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                                            .velocity = message.Velocity() / 127.0f,
                                            .offset = event.time - block_start_frame,
                                            .note = message.ChannelNote(),
+                                           .release_triggers = KeyReleaseTriggers(
+                                               processor.audio_processing_context.midi_note_state,
+                                               message.ChannelNote()),
                                            .type = NoteEvent::Type::Off,
                                        });
                     break;
@@ -982,29 +988,36 @@ static void ProcessClapNoteOrMidi(AudioProcessor& processor,
                         auto const notes_to_end =
                             context.midi_note_state.HandleSustainPedalOff(sustain_channel);
                         notes_to_end.ForEachSetBit([&](usize note) {
-                            AppendNoteOffEvent(processor,
-                                               changes,
-                                               {
-                                                   .velocity = 0.0f,
-                                                   .offset = event.time - block_start_frame,
-                                                   .note = {CheckedCast<u7>(note), sustain_channel},
-                                                   .created_by_cc64 = true,
-                                                   .type = NoteEvent::Type::Off,
-                                               });
+                            MidiChannelNote const chan_note {CheckedCast<u7>(note), sustain_channel};
+                            AppendNoteOffEvent(
+                                processor,
+                                changes,
+                                {
+                                    .velocity = 0.0f,
+                                    .offset = event.time - block_start_frame,
+                                    .note = chan_note,
+                                    .release_triggers =
+                                        SustainPedalReleaseTriggers(context.midi_note_state, chan_note),
+                                    .type = NoteEvent::Type::Off,
+                                });
                         });
                     };
 
                     auto const release_all_notes = [&](u4 notes_channel) {
                         auto const notes_to_end = context.midi_note_state.HandleAllNotesOff(notes_channel);
                         notes_to_end.ForEachSetBit([&](usize note) {
-                            AppendNoteOffEvent(processor,
-                                               changes,
-                                               {
-                                                   .velocity = 0.0f,
-                                                   .offset = event.time - block_start_frame,
-                                                   .note = {CheckedCast<u7>(note), notes_channel},
-                                                   .type = NoteEvent::Type::Off,
-                                               });
+                            MidiChannelNote const chan_note {CheckedCast<u7>(note), notes_channel};
+                            AppendNoteOffEvent(
+                                processor,
+                                changes,
+                                {
+                                    .velocity = 0.0f,
+                                    .offset = event.time - block_start_frame,
+                                    .note = chan_note,
+                                    .release_triggers =
+                                        AllNotesOffReleaseTriggers(context.midi_note_state, chan_note),
+                                    .type = NoteEvent::Type::Off,
+                                });
                         });
                     };
 
@@ -1345,7 +1358,7 @@ static clap_process_status ProcessSubBlock(AudioProcessor& processor,
                                            .velocity = 0.0f,
                                            .offset = 0,
                                            .note = {CheckedCast<u7>(note), (u4)channel},
-                                           .created_by_cc64 = true,
+                                           .release_triggers = {}, // Not played, so no release samples.
                                            .type = NoteEvent::Type::Off,
                                        });
                 });

@@ -801,7 +801,7 @@ struct TableFields<Region::TriggerCriteria> {
         Count,
     };
 
-    static constexpr char const* k_trigger_event_names[] = {"note-on", "note-off", nullptr};
+    static constexpr char const* k_trigger_event_names[] = {"note-on", "note-off", "note-end", nullptr};
     static_assert(ArraySize(k_trigger_event_names) == ToInt(TriggerEvent::Count) + 1);
 
     static constexpr FieldInfo FieldInfo(Field f) {
@@ -809,7 +809,8 @@ struct TableFields<Region::TriggerCriteria> {
             case Field::Event:
                 return {
                     .name = "trigger_event",
-                    .description_sentence = "What event triggers this region.",
+                    .description_sentence =
+                        "What event triggers this region. note-on triggers when a key is pressed. note-off triggers whenever a key is released, regardless of the sustain pedal - suitable for key mechanism sounds. note-end triggers when the note stops being sustained: on key release if the sustain pedal is up, otherwise when the pedal is released (for keys no longer held) - suitable for damper or release sounds. note-end uses the note's note-on velocity. note-off and note-end regions are one-shots: they have no volume envelope, never loop, and play out entirely.",
                     .example = FromNullTerminated(k_trigger_event_names[0]),
                     .default_value = FromNullTerminated(k_trigger_event_names[0]),
                     .lua_type = LUA_TSTRING,
@@ -1127,10 +1128,11 @@ template <>
 struct TableFields<Region> {
     using Type = Region;
 
-    static constexpr char const* k_trigger_event_names[] = {"note-on", "note-off", nullptr};
+    static constexpr char const* k_trigger_event_names[] = {"note-on", "note-off", "note-end", nullptr};
     static constexpr char const* k_trigger_event_descriptions[] = {
         "key is pressed down",
         "key is released - note-off regions are one-shots: they have no volume envelope, never loop, and play out entirely",
+        "note stops being sustained: key release while the sustain pedal is up, or pedal release for keys no longer held - note-end regions are one-shots like note-off",
         nullptr};
     static_assert(ArraySize(k_trigger_event_names) == ToInt(TriggerEvent::Count) + 1);
     static_assert(ArraySize(k_trigger_event_descriptions) == ToInt(TriggerEvent::Count) + 1);
@@ -3442,6 +3444,7 @@ TEST_CASE(TestBasicFile) {
     floe.add_region(instrument2, floe.extend_table(proto, {
         path = "foo/file.flac",
         root_key = 10,
+        trigger_criteria = { trigger_event = "note-end" },
     }))
     floe.add_ir(library, {
         name = "IR1",
@@ -3479,6 +3482,8 @@ TEST_CASE(TestBasicFile) {
         REQUIRE(inst2->tags.NumSet() == 2);
         CHECK(inst2->tags.Get(ToInt(TagType::Acoustic)));
         CHECK(inst2->tags.Get(ToInt(TagType::Warm)));
+        REQUIRE(inst2->regions.size == 1);
+        CHECK(inst2->regions[0].trigger.trigger_event == TriggerEvent::NoteEnd);
     }
 
     {

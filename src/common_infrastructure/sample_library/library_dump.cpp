@@ -180,6 +180,7 @@ static String TriggerEventString(sample_lib::TriggerEvent e) {
     switch (e) {
         case sample_lib::TriggerEvent::NoteOn: return "note-on"_s;
         case sample_lib::TriggerEvent::NoteOff: return "note-off"_s;
+        case sample_lib::TriggerEvent::NoteEnd: return "note-end"_s;
         case sample_lib::TriggerEvent::Count: break;
     }
     return "unknown"_s;
