@@ -664,7 +664,8 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
 
         for (auto const& event : mac_watcher.events) {
             for (auto& dir : watcher.watched_dirs) {
-                if (StartsWithSpan(event.path, dir.resolved_path)) {
+                if (event.path == dir.resolved_path ||
+                    path::IsWithinDirectory(event.path, dir.resolved_path)) {
                     String subpath {};
                     if (event.path.size != dir.resolved_path.size)
                         subpath = event.path.SubSpan(dir.resolved_path.size);
