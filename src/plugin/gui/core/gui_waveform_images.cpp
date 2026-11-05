@@ -3,6 +3,8 @@
 
 #include "gui/core/gui_waveform_images.hpp"
 
+#include "tests/framework.hpp"
+
 #include "common_infrastructure/sample_library/server/sample_library_server.hpp"
 #include "common_infrastructure/state/instrument.hpp"
 
@@ -170,8 +172,25 @@ void StartFrame(WaveformImagesTable& table, Renderer& renderer) {
     }
 }
 
+static void
+ReleaseWaveformResources(WaveformImagesTable& table, Renderer& renderer, WaveformImage& waveform) {
+    if (waveform.image_id) {
+        renderer.DestroyImageID(*waveform.image_id);
+        waveform.image_id = k_nullopt;
+    }
+
+    auto const future = Exchange(waveform.loading_pixels, nullptr);
+    if (!future) return;
+
+    // The job still owns it; the orphan sweep in EndFrame removes it once the job stops.
+    if (future->Cancel()) return;
+
+    if (auto const result = future->TryReleaseResult()) result->Free(PixelsAllocator());
+    table.loading_pixels.Remove(future);
+}
+
 void EndFrame(WaveformImagesTable& table, Renderer& renderer, Span<Instrument const*> possible_instruments) {
-    // Clean up orphaned loading futures (cancelled in StartFrame but not yet finished at that time).
+    // Clean up orphaned loading futures (cancelled while their job was still in progress).
     table.loading_pixels.RemoveIf([](WaveformImage::FuturePixels& future) {
         auto const status = future.AcquireStatus();
         if (!future.IsInProgress(status) && future.IsCancelled(status)) {
@@ -201,18 +220,7 @@ void EndFrame(WaveformImagesTable& table, Renderer& renderer, Span<Instrument co
             waveform.last_requested && waveform.last_requested.SecondsFromNow() > k_unrequested_timeout_secs;
 
         if (!still_needed && timed_out) {
-            if (waveform.image_id) {
-                renderer.DestroyImageID(*waveform.image_id);
-                waveform.image_id = k_nullopt;
-            }
-            if (waveform.loading_pixels) {
-                if (auto const result = waveform.loading_pixels->TryReleaseResult()) {
-                    result->Free(PixelsAllocator());
-                    table.loading_pixels.Remove(waveform.loading_pixels);
-                } else {
-                    waveform.loading_pixels->Cancel();
-                }
-            }
+            ReleaseWaveformResources(table, renderer, waveform);
             return true;
         }
         return false;
@@ -220,13 +228,8 @@ void EndFrame(WaveformImagesTable& table, Renderer& renderer, Span<Instrument co
 }
 
 void InvalidateAllWaveformImages(WaveformImagesTable& table, Renderer& renderer) {
-    for (auto [_, waveform, _] : table.table) {
-        if (waveform.image_id) {
-            renderer.DestroyImageID(*waveform.image_id);
-            waveform.image_id = k_nullopt;
-        }
-        if (waveform.loading_pixels) waveform.loading_pixels->Cancel();
-    }
+    for (auto [_, waveform, _] : table.table)
+        ReleaseWaveformResources(table, renderer, waveform);
 }
 
 void Shutdown(WaveformImagesTable& table) {
@@ -241,3 +244,80 @@ void Shutdown(WaveformImagesTable& table) {
     table.loading_pixels.Clear();
     table.table.DeleteAll();
 }
+
+//=================================================
+//  _______        _
+// |__   __|      | |
+//    | | ___  ___| |_ ___
+//    | |/ _ \/ __| __/ __|
+//    | |  __/\__ \ |_\__ \
+//    |_|\___||___/\__|___/
+//
+//=================================================
+
+struct NullRenderer : Renderer {
+    NullRenderer() : Renderer((TextureHandle)0) {}
+    ErrorCodeOr<void> Init(UiSize, void*, void*) override { return k_success; }
+    void Deinit() override {}
+    void OnResize(UiSize, void*) override {}
+    ErrorCodeOr<void> CreateFontTexture(FontAtlas&) override { return k_success; }
+    void DestroyFontTexture() override {}
+    ErrorCodeOr<TextureHandle> CreateTexture(u8 const*, UiSize, u16) override { return (TextureHandle)1; }
+    void DestroyTexture(TextureHandle&) override {}
+    ErrorCodeOr<void> Render(Span<DrawList*>, UiSize, void*) override { return k_success; }
+};
+
+static usize NumLoadingPixels(WaveformImagesTable& table) {
+    usize result = 0;
+    for (auto& _ : table.loading_pixels)
+        ++result;
+    return result;
+}
+
+static bool EntriesOnlyReferenceLiveFutures(WaveformImagesTable& table) {
+    for (auto [_, waveform, _] : table.table) {
+        if (!waveform.loading_pixels) continue;
+        bool found = false;
+        for (auto& future : table.loading_pixels)
+            if (&future == waveform.loading_pixels) found = true;
+        if (!found) return false;
+    }
+    return true;
+}
+
+TEST_CASE(TestWaveformImages) {
+    NullRenderer renderer;
+    WaveformImagesTable table;
+    DEFER { Shutdown(table); };
+
+    SUBCASE("invalidating while a job is pending doesn't leave a dangling future") {
+        auto& waveform = table.table.FindOrInsertGrowIfNeeded(table.arena, 1, {}).element.data;
+        waveform.source_hash = 1;
+        waveform.last_requested = TimePoint::Now();
+        waveform.loading_pixels = table.loading_pixels.Prepend(table.arena);
+        auto& future = *waveform.loading_pixels;
+        future.SetPending();
+
+        InvalidateAllWaveformImages(table, renderer);
+        CHECK(!future.TrySetRunning()); // The job sees the cancellation.
+
+        EndFrame(table, renderer, {});
+        CHECK(EntriesOnlyReferenceLiveFutures(table));
+        CHECK_EQ(NumLoadingPixels(table), 0u);
+    }
+
+    SUBCASE("removing an expired entry frees its inactive future") {
+        auto& waveform = table.table.FindOrInsertGrowIfNeeded(table.arena, 2, {}).element.data;
+        waveform.source_hash = 2;
+        waveform.last_requested = TimePoint::Now() + -60.0;
+        waveform.loading_pixels = table.loading_pixels.Prepend(table.arena);
+
+        EndFrame(table, renderer, {});
+        CHECK_EQ(table.table.size, 0u);
+        CHECK_EQ(NumLoadingPixels(table), 0u);
+    }
+
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterWaveformImagesTests) { REGISTER_TEST(TestWaveformImages); }

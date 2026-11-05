@@ -104,6 +104,7 @@ __attribute__((section(".preinit_array"), used)) static void (*g_tsan_preinit)()
     X(RegisterVersionTests)                                                                                  \
     X(RegisterVoiceTests)                                                                                    \
     X(RegisterVolumeFadeTests)                                                                               \
+    X(RegisterWaveformImagesTests)                                                                           \
     X(RegisterWebTests)                                                                                      \
     X(RegisterWriterTests)
 
