@@ -273,7 +273,7 @@ MutableString KnownDirectory(Allocator& a, KnownDirectoryType type, KnownDirecto
         case KnownDirectoryType::UserData:
             dir_type = NSApplicationSupportDirectory;
             domain = NSUserDomainMask;
-            fallback = "Application Support";
+            fallback = "Library/Application Support";
             break;
 
         case KnownDirectoryType::GlobalVst3Plugins: {
@@ -320,7 +320,7 @@ MutableString KnownDirectory(Allocator& a, KnownDirectoryType type, KnownDirecto
         case KnownDirectoryType::MiragePreferencesAlternate:
             dir_type = NSApplicationSupportDirectory;
             domain = NSUserDomainMask;
-            fallback = "Application Support";
+            fallback = "Library/Application Support";
             break;
         case KnownDirectoryType::MirageGlobalPreferences:
         case KnownDirectoryType::MirageGlobalData:
@@ -348,14 +348,9 @@ MutableString KnownDirectory(Allocator& a, KnownDirectoryType type, KnownDirecto
                                          domain,
                                          FilesystemErrorFromNSError(error));
         }
-        if (domain == NSUserDomainMask) {
-            DynamicArrayBounded<String, 10> parts {};
-            ASSERT(extra_subdirs.size <= (parts.Capacity() - 2));
-            dyn::Append(parts, "/Users"_s);
-            dyn::Append(parts, NSStringToString(NSUserName()));
-            dyn::AppendSpan(parts, extra_subdirs);
-            path = path::Join(a, parts);
-        } else
+        if (domain == NSUserDomainMask)
+            path = path::Join(a, Array {"/Users"_s, NSStringToString(NSUserName()), fallback});
+        else
             path = a.Clone(fallback);
     } else {
         path = a.Clone(NSStringToString(url.path));
