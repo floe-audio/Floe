@@ -2148,7 +2148,8 @@ ErrorCodeOr<StateSnapshot> LoadPresetFile(PresetFormat format,
                           CodeStateArguments {
                               .mode = CodeStateArguments::Mode::Decode,
                               .read_or_write_data = [&reader](void* data, usize bytes) -> ErrorCodeOr<void> {
-                                  TRY(reader.Read(data, bytes));
+                                  auto const bytes_read = TRY(reader.Read(data, bytes));
+                                  if (bytes_read != bytes) return ErrorCode(CommonError::InvalidFileFormat);
                                   return k_success;
                               },
                               .source = StateSource::PresetFile,
