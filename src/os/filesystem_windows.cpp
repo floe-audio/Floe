@@ -247,6 +247,7 @@ ErrorCodeOr<File> OpenFile(String filename, FileMode mode) {
             return Win32ErrorCode(r, "SetEntriesInAcl");
 
         sd = (PSECURITY_DESCRIPTOR)LocalAlloc(LPTR, SECURITY_DESCRIPTOR_MIN_LENGTH);
+        if (!sd) return Win32ErrorCode(GetLastError(), "LocalAlloc");
         if (InitializeSecurityDescriptor(sd, SECURITY_DESCRIPTOR_REVISION) == 0)
             return Win32ErrorCode(GetLastError());
         if (SetSecurityDescriptorDacl(sd, TRUE, acl, FALSE) == 0) return Win32ErrorCode(GetLastError());
@@ -371,28 +372,22 @@ ErrorCodeOr<void> CreateDirectory(String path, CreateDirectoryOptions options) {
 static ErrorCodeOr<DynamicArray<wchar_t>> Win32GetRunningProgramName(Allocator& a) {
     DynamicArray<wchar_t> result(a);
 
+    // Long paths (\\?\ prefix) can be up to 32767 characters.
+    constexpr usize k_max_path_buffer_size = 32768;
     result.Reserve(MAX_PATH + 1);
-    auto try_get_module_file_name = [&]() -> ErrorCodeOr<bool> {
-        auto path_len = GetModuleFileNameW(CheckedPointerCast<HINSTANCE>(&__ImageBase),
-                                           result.data,
-                                           (DWORD)result.Capacity());
-        if (path_len == 0)
-            return FilesystemWin32ErrorCode(GetLastError(), "GetModuleFileNameW");
-        else if (path_len == (DWORD)result.Capacity())
-            return false;
-        dyn::Resize(result, (usize)path_len);
-        return true;
-    };
-
-    auto const successfully_got_path = TRY(try_get_module_file_name());
-    if (!successfully_got_path) {
-        // try with a much larger buffer
+    while (true) {
+        auto const buffer_size = (DWORD)Min(result.Capacity(), k_max_path_buffer_size);
+        auto const path_len =
+            GetModuleFileNameW(CheckedPointerCast<HINSTANCE>(&__ImageBase), result.data, buffer_size);
+        if (path_len == 0) return FilesystemWin32ErrorCode(GetLastError(), "GetModuleFileNameW");
+        if (path_len < buffer_size) {
+            dyn::Resize(result, (usize)path_len);
+            return result;
+        }
+        if (buffer_size == k_max_path_buffer_size)
+            Panic("GetModuleFileNameW path exceeds the long path limit");
         result.Reserve(result.Capacity() * 4);
-        auto const successfully_got_path_attempt2 = TRY(try_get_module_file_name());
-        if (!successfully_got_path_attempt2) Panic("GetModuleFileNameW expects unreasonable path size");
     }
-
-    return result;
 }
 
 ErrorCodeOr<MutableString> CurrentBinaryPath(Allocator& a) {
