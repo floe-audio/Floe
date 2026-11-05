@@ -1805,6 +1805,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "processing_utils/volume_fade.cpp",
             "processor/effect_bitcrush.cpp",
             "processor/effect_compressor.cpp",
+            "processor/effect_convo.cpp",
             "processor/layer_processor.cpp",
             "processor/param.cpp",
             "processor/processor.cpp",

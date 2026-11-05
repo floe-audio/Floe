@@ -25,10 +25,14 @@ void Init(StereoConvolver& convolver, float const* samples, float gain_db, int n
 
     // IMPROVE: probably more efficent ways to handle mono audio
 
+    int const num_samples = num_frames * num_channels;
     for (int chan = 0; chan < 2; ++chan) {
-        if (!(chan == 2 && num_channels == 1))
-            for (int frame = 0; frame < num_frames; ++frame)
-                channel_samples[frame] = samples[frame * num_channels + chan] * gain;
+        // For mono IRs, the right channel has always been read one frame ahead of the left. We keep that so
+        // existing sounds don't change, but the frame past the end is zero rather than out-of-bounds.
+        for (int frame = 0; frame < num_frames; ++frame) {
+            int const index = frame * num_channels + chan;
+            channel_samples[frame] = index < num_samples ? samples[index] * gain : 0.0f;
+        }
 
         // Just trial and error with these values; these seem to be most efficient
         constexpr size_t k_head_block_size = 512;
