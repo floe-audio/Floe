@@ -2015,7 +2015,7 @@ static int SetRequiredFloeVersion(lua_State* lua) {
         return luaL_error(lua,
                           "Invalid version string: %s. It should be in the format 'major.minor.patch' "
                           "where major, minor and patch are integers.",
-                          semver_str);
+                          semver_str.data);
     });
 
     if (version > k_floe_version) {
