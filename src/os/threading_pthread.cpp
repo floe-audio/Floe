@@ -158,9 +158,10 @@ void ConditionVariable::Wait(ScopedMutexLock& lock) {
 void ConditionVariable::TimedWait(ScopedMutexLock& lock, u64 wait_ms) {
     if (wait_ms > 0) {
 #if __APPLE__
-        struct timespec ts;
-        ts.tv_sec += wait_ms / 1000;
-        ts.tv_nsec += (wait_ms % 1000) * 1000000;
+        struct timespec const ts {
+            .tv_sec = (time_t)(wait_ms / 1000),
+            .tv_nsec = (long)((wait_ms % 1000) * 1000000),
+        };
         pthread_cond_timedwait_relative_np(&m_cond_var.As<pthread_cond_t>(),
                                            &lock.mutex.mutex.As<pthread_mutex_t>(),
                                            &ts);
