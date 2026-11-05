@@ -1002,7 +1002,7 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
                                     LinuxWatchedDirectory::SubDir {
                                         .watch_id = sub_watch_id_outcome.Value(),
                                         .subpath =
-                                            this_dir.Native().path_pool.Clone(subpath, this_dir.dir.arena),
+                                            this_dir.Native().path_pool.Clone(subsubpath, this_dir.dir.arena),
                                     };
                                 }
                             }
