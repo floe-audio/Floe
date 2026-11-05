@@ -91,8 +91,9 @@ Optional<MutableString> GetEnvironmentVariable(String name, Allocator& a) {
     auto const size = GetEnvironmentVariableW(w_name.data, nullptr, 0);
     if (size == 0) return k_nullopt;
     auto const buffer = scratch.AllocateExactSizeUninitialised<WCHAR>(size);
-    GetEnvironmentVariableW(w_name.data, buffer.data, size);
-    return Narrow(a, buffer).Value();
+    auto const len = GetEnvironmentVariableW(w_name.data, buffer.data, size);
+    if (len >= size) return k_nullopt;
+    return Narrow(a, buffer.SubSpan(0, len));
 }
 
 u64 RandomSeed() {
