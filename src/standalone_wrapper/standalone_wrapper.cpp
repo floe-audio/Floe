@@ -569,7 +569,7 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
         if (!success && entry_source.library_handle) UnloadLibrary(*entry_source.library_handle);
     };
 
-    entry_source.entry->init(nullptr);
+    TRY_CLAP(entry_source.entry->init(nullptr));
     DEFER {
         if (!success) entry_source.entry->deinit();
     };
@@ -607,8 +607,11 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
     inst->plugin = factory->create_plugin(factory, &inst->host, g_plugin_info.id);
     if (!inst->plugin) return ErrorCode {StandaloneError::PluginInterfaceError};
     inst->plugin_created = true;
+    DEFER {
+        if (!success) inst->plugin->destroy(inst->plugin);
+    };
 
-    inst->plugin->init(inst->plugin);
+    TRY_CLAP(inst->plugin->init(inst->plugin));
 
     // If the audio device failed to open we still activate the plugin with conservative defaults so
     // the GUI (and its errors panel) come up; the audio thread is silent until a device is selected.
@@ -621,9 +624,16 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
                                                                : 1024u;
     // InitAudioDevice rejects devices whose period exceeds k_max_audio_buffer_frames, so this is
     // always the max block size.
-    inst->plugin->activate(inst->plugin, sample_rate, min_block_size, (u32)k_max_audio_buffer_frames);
+    TRY_CLAP(
+        inst->plugin->activate(inst->plugin, sample_rate, min_block_size, (u32)k_max_audio_buffer_frames));
+    DEFER {
+        if (!success) inst->plugin->deactivate(inst->plugin);
+    };
 
-    inst->plugin->start_processing(inst->plugin);
+    TRY_CLAP(inst->plugin->start_processing(inst->plugin));
+    DEFER {
+        if (!success) inst->plugin->stop_processing(inst->plugin);
+    };
 
     if (standalone.headless) {
         // Make visible to audio thread last. The Release ensures the plugin_instance pointer write
@@ -642,6 +652,9 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
         inst->gui->is_api_supported(inst->plugin, k_floe_offscreen_gui_api, false)) {
         inst->offscreen_gui = true;
         TRY_CLAP(inst->gui->create(inst->plugin, k_floe_offscreen_gui_api, false));
+        DEFER {
+            if (!success) inst->gui->destroy(inst->plugin);
+        };
         if (standalone.fixed_window_size)
             TRY_CLAP(inst->gui->set_size(inst->plugin,
                                          standalone.fixed_window_size->width,
@@ -663,6 +676,9 @@ LoadPluginInstance(Standalone& standalone, Optional<String> dso_path, ArenaAlloc
     inst->floe_host_ext.fixed_window_size = standalone.fixed_window_size.HasValue();
 
     TRY_CLAP(inst->gui->create(inst->plugin, k_supported_gui_api, false));
+    DEFER {
+        if (!success) inst->gui->destroy(inst->plugin);
+    };
 
     u32 clap_width;
     u32 clap_height;
