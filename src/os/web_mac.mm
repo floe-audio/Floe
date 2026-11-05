@@ -51,6 +51,7 @@ ErrorCodeOr<void> HttpsGet(String url, Writer writer, RequestOptions options) {
     session_config.timeoutIntervalForRequest = (f64)options.timeout_seconds;
     session_config.timeoutIntervalForResource = (f64)options.timeout_seconds;
     NSURLSession* session = [NSURLSession sessionWithConfiguration:session_config];
+    DEFER { [session finishTasksAndInvalidate]; };
 
     __block ErrorCodeOr<void> result {};
     __block CompletionSync completion_sync;
@@ -98,6 +99,7 @@ HttpsPost(String url, String body, Optional<Writer> response_writer, RequestOpti
     session_config.timeoutIntervalForRequest = (f64)options.timeout_seconds;
     session_config.timeoutIntervalForResource = (f64)options.timeout_seconds;
     NSURLSession* session = [NSURLSession sessionWithConfiguration:session_config];
+    DEFER { [session finishTasksAndInvalidate]; };
 
     __block ErrorCodeOr<void> result {};
     __block CompletionSync completion_sync;
