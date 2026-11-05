@@ -79,6 +79,7 @@ PUBLIC constexpr Optional<usize> NarrowToBuffer(char* out, WString wstr) {
             out[out_size++] = (char)(0x80 + (*str & 0x3f));
             str += 1;
         } else if (*str >= 0xd800 && *str < 0xdc00) {
+            if (end - str < 2 || str[1] < 0xdc00 || str[1] >= 0xe000) return text_encoding_error;
             u32 const c = (((u32)str[0] - 0xd800) << 10) + (((u32)str[1]) - 0xdc00) + 0x10000;
             out[out_size++] = (char)(0xf0 + (c >> 18));
             out[out_size++] = (char)(0x80 + ((c >> 12) & 0x3f));
