@@ -390,7 +390,7 @@ void DoIrBrowserPopup(GuiBuilder& builder, IrBrowserContext& context, IrBrowserS
         using Visibility = CurrentItemStatus::Visibility;
         CurrentItemStatus status {};
         if (ir_id) {
-            status.name = IrName(context.engine);
+            status.name = IrName(context.engine, context.frame_context.lib_table);
 
             auto const lib = context.frame_context.lib_table.Find(ir_id->library);
             auto const ir = lib ? (*lib)->irs_by_id.Find((String)ir_id->ir_id) : nullptr;

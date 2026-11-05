@@ -437,7 +437,7 @@ static void DoIrSelectorRightClickMenu(GuiState& g, Box selector_button) {
 // Run via DoBrowserOpenerViewport: while the IR browser is open, the row floats above the modal's dim and
 // stays interactable, with the browser flush against it so the two read as one element.
 static void DoImpulseResponseSelectorRow(GuiState& g, GuiFrameContext const& frame_context, bool greyed_out) {
-    auto const ir_name = IrName(g.engine);
+    auto const ir_name = IrName(g.engine, frame_context.lib_table);
     auto const browser_id = g.ir_browser_state.k_panel_id;
     auto const window_r = g.imgui.curr_viewport->unpadded_bounds;
 
@@ -474,7 +474,7 @@ static void DoImpulseResponseSelectorRow(GuiState& g, GuiFrameContext const& fra
                     "Open the IR Browser to choose an impulse response: the sample that gives this reverb its character."_s);
                 if (!g.engine.processor.convo.ir_id)
                     dyn::AppendSpan(buffer, " There's no reverb until one is loaded."_s);
-                if (auto const ir = CurrentIr(g.engine); ir && ir->description)
+                if (auto const ir = CurrentIr(g.engine, frame_context.lib_table); ir && ir->description)
                     fmt::Append(buffer, "\n\n{}: {}", ir_name, *ir->description);
                 return buffer.ToOwnedSpan();
             }},

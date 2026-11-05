@@ -699,28 +699,27 @@ bool IsBlankState(Engine& engine) {
     return current == blank;
 }
 
-sample_lib::ImpulseResponse const* CurrentIr(Engine const& engine) {
+sample_lib::ImpulseResponse const* CurrentIr(Engine const& engine,
+                                             sample_lib_server::LibrariesTable const& retained_libraries) {
     ASSERT(g_is_logical_main_thread);
     if (!engine.processor.convo.ir_id) return nullptr;
 
     auto const& id = *engine.processor.convo.ir_id;
-    auto lib = sample_lib_server::FindLibraryRetained(engine.shared_engine_systems.sample_library_server,
-                                                      id.library);
-    DEFER { lib.Release(); };
+    auto const lib = retained_libraries.Find(id.library);
     if (!lib) return nullptr;
 
-    auto const ir = lib->irs_by_id.Find(id.ir_id);
+    auto const ir = (*lib)->irs_by_id.Find(id.ir_id);
     if (!ir) return nullptr;
 
     return *ir;
 }
 
-String IrName(Engine const& engine) {
+String IrName(Engine const& engine, sample_lib_server::LibrariesTable const& retained_libraries) {
     ASSERT(g_is_logical_main_thread);
     if (!engine.processor.convo.ir_id) return "None"_s;
     auto const& id = *engine.processor.convo.ir_id;
 
-    auto const current = CurrentIr(engine);
+    auto const current = CurrentIr(engine, retained_libraries);
     if (!current) return id.ir_id;
     return current->name;
 }

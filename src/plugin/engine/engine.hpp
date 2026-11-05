@@ -157,8 +157,10 @@ struct LoadStateOptions {
 // references samples or IRs that need to be loaded.
 void LoadState(Engine& engine, StateSnapshot const& state, LoadStateOptions const& opts);
 
-sample_lib::ImpulseResponse const* CurrentIr(Engine const& engine);
-String IrName(Engine const& engine);
+// The results point into a library in retained_libraries, so they're only valid while it's retained.
+sample_lib::ImpulseResponse const* CurrentIr(Engine const& engine,
+                                             sample_lib_server::LibrariesTable const& retained_libraries);
+String IrName(Engine const& engine, sample_lib_server::LibrariesTable const& retained_libraries);
 
 usize MegabytesUsedBySamples(Engine const& engine);
 
