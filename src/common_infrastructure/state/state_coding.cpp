@@ -349,6 +349,8 @@ class JsonStateParser {
         }
 
         if (SetIfMatchingObject(handler_stack, event, "", [this](EventHandlerStack&, Event const& event) {
+                if (m_inst_index >= k_num_layers) return false;
+
                 String path;
                 if (SetIfMatchingRef(event, "path", path)) {
                     if (path.size) {
