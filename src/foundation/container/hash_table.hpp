@@ -428,12 +428,15 @@ struct HashTable {
 
     HashTable Clone(Allocator& allocator, CloneType type) const {
         auto cloned_elements = allocator.Clone(Elements(), type);
-        return {
+        HashTable result {
             .elems = cloned_elements.data,
             .mask = mask,
             .size = size,
             .num_dead = num_dead,
         };
+        if constexpr (k_ordering == HashTableOrdering::Ordered)
+            result.order_indices = allocator.Clone(Span {order_indices, Capacity()}).data;
+        return result;
     }
 
     void Assign(HashTable const& other, Allocator& allocator) {

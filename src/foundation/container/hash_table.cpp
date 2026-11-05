@@ -199,6 +199,20 @@ TEST_CASE(TestHashTable) {
                 CHECK(it == tab1.end());
             }
 
+            // Clone keeps the ordering
+            {
+                auto const cloned = tab1.table.Clone(a, CloneType::Shallow);
+                CHECK(cloned.order_indices != tab1.table.order_indices);
+                auto it = cloned.begin();
+                CHECK_EQ((*it).key, "a"_s);
+                ++it;
+                CHECK_EQ((*it).key, "c"_s);
+                ++it;
+                CHECK_EQ((*it).key, "d"_s);
+                ++it;
+                CHECK(it == cloned.end());
+            }
+
             // Delete all, then add a couple items back
             {
                 tab1.DeleteAll();
