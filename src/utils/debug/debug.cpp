@@ -486,7 +486,8 @@ void PanicHandler(char const* message, size_t message_length) {
 
 ErrorCodeOr<void>
 WriteStacktrace(Span<uintptr const> addresses, Writer writer, StacktracePrintOptions options) {
-    if (auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire)) {
+    auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire);
+    if (mod && mod->impl) {
         StacktraceContext ctx {.options = options, .writer = writer};
 
         SymbolInfo(mod->impl,
@@ -511,7 +512,7 @@ WriteStacktrace(Span<uintptr const> addresses, Writer writer, StacktracePrintOpt
         if (ctx.return_value.HasError()) return ctx.return_value;
     } else {
         TRY(writer.WriteChars("[No module info available"_s));
-        if (mod->failed_init_error) {
+        if (mod && mod->failed_init_error) {
             TRY(writer.WriteChars(": "));
             TRY(writer.WriteChars(*mod->failed_init_error));
         }
