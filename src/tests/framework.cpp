@@ -376,6 +376,7 @@ int RunAllTests(Tester& tester, RunTestConfig const& config) {
                 auto _ = CreateDirectory(*dir, {.create_intermediate_directories = true});
             tester.gha_annotations_out = TRY_OR(OpenFile(path, FileMode::Write()), {
                 tester.log.Error("failed to open GitHub Actions annotations output file {}: {}", path, error);
+                return 1;
             });
         }
     }
