@@ -1125,6 +1125,17 @@ static void UnwatchDirectory(WindowsWatchedDirectory* windows_dir) {
     PageAllocator::Instance().Delete(windows_dir);
 }
 
+static bool IssueReadDirectoryChanges(WindowsWatchedDirectory& windows_dir, bool recursive) {
+    return ReadDirectoryChangesW(windows_dir.handle,
+                                 windows_dir.buffer.data,
+                                 (DWORD)windows_dir.buffer.size,
+                                 recursive,
+                                 k_directory_changes_filter,
+                                 nullptr,
+                                 &windows_dir.overlapped,
+                                 nullptr);
+}
+
 ErrorCodeOr<DirectoryWatcher> CreateDirectoryWatcher(Allocator& a) {
     ZoneScoped;
     DirectoryWatcher result {
@@ -1167,17 +1178,9 @@ static ErrorCodeOr<WindowsWatchedDirectory*> WatchDirectory(DirectoryWatcher::Wa
     windows_dir->overlapped.hEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     ASSERT(windows_dir->overlapped.hEvent);
 
-    auto const succeeded = ReadDirectoryChangesW(handle,
-                                                 windows_dir->buffer.data,
-                                                 (DWORD)windows_dir->buffer.size,
-                                                 dir.recursive,
-                                                 k_directory_changes_filter,
-                                                 nullptr,
-                                                 &windows_dir->overlapped,
-                                                 nullptr);
-    if (!succeeded) {
-        UnwatchDirectory(windows_dir);
+    if (!IssueReadDirectoryChanges(*windows_dir, dir.recursive)) {
         auto const error = GetLastError();
+        UnwatchDirectory(windows_dir);
         switch (error) {
             case ERROR_INVALID_FUNCTION: {
                 // If the network redirector or the target file system does not support this operation, the
@@ -1361,18 +1364,9 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
             continue;
         }
 
-        auto const succeeded = ReadDirectoryChangesW(windows_dir.handle,
-                                                     windows_dir.buffer.data,
-                                                     (DWORD)windows_dir.buffer.size,
-                                                     dir.recursive,
-                                                     k_directory_changes_filter,
-                                                     nullptr,
-                                                     &windows_dir.overlapped,
-                                                     nullptr);
-
-        if (!succeeded) {
-            auto const error = GetLastError();
-            if (error == ERROR_NOTIFY_ENUM_DIR)
+        auto const succeeded = ({
+            auto issued = IssueReadDirectoryChanges(windows_dir, dir.recursive);
+            if (!issued && GetLastError() == ERROR_NOTIFY_ENUM_DIR) {
                 dir.directory_changes.Add(
                     {
                         .subpath = {},
@@ -1380,11 +1374,21 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
                         .changes = DirectoryWatcher::ChangeType::ManualRescanNeeded,
                     },
                     args.result_arena);
-            else {
-                ASSERT(error != ERROR_INVALID_PARAMETER);
-                ASSERT(error != ERROR_INVALID_FUNCTION);
-                dir.directory_changes.error = FilesystemWin32ErrorCode(error);
+                issued = IssueReadDirectoryChanges(windows_dir, dir.recursive);
             }
+            issued;
+        });
+
+        if (!succeeded) {
+            // Without a pending read the event never fires again, so this directory can't stay in the
+            // Watching state.
+            auto const error = GetLastError();
+            ASSERT(error != ERROR_INVALID_PARAMETER);
+            ASSERT(error != ERROR_INVALID_FUNCTION);
+            dir.directory_changes.error = FilesystemWin32ErrorCode(error);
+            UnwatchDirectory(&windows_dir);
+            dir.native_data = {};
+            dir.state = DirectoryWatcher::WatchedDirectory::State::WatchingFailed;
             continue;
         }
     }
