@@ -63,6 +63,7 @@ static ErrorCodeOr<void> DecryptChunk(Reader& source,
                                       u8* plaintext_out,
                                       u8* ciphertext_buf) {
     auto const ct_plus_tag_size = plaintext_size + k_tag_size;
+    if (source_offset > source.size) return ErrorCode {EncryptedPackageError::DecryptionFailed};
     source.pos = (usize)source_offset;
     auto const bytes_read = TRY(source.Read(ciphertext_buf, ct_plus_tag_size));
     if (bytes_read < ct_plus_tag_size) return ErrorCode {EncryptedPackageError::DecryptionFailed};
@@ -162,6 +163,7 @@ ErrorCodeOr<usize> ReadAt(DecryptingReader& dr, u64 plaintext_offset, void* buff
             u8 ct_buf[k_default_chunk_size + k_tag_size];
 
             auto const file_offset = ChunkFileOffset(dr.header, chunk_index);
+            dr.has_cached_chunk = false;
             TRY(DecryptChunk(*dr.source,
                              dr.header,
                              file_offset,
