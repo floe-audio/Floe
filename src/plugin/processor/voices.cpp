@@ -599,7 +599,7 @@ void StartVoice(VoicePool& pool,
                 if (sampler.slice_start_frame) {
                     auto const num_frames = s_sampler.data->num_frames;
                     auto slice_start = Min(*sampler.slice_start_frame, num_frames - 1);
-                    auto slice_end = sampler.slice_end_frame.ValueOr(num_frames);
+                    auto slice_end = Min(sampler.slice_end_frame.ValueOr(num_frames), num_frames);
 
                     if (voice_controller.reverse) {
                         auto const inv_start = num_frames - slice_end;
