@@ -151,6 +151,7 @@ struct Tokeniser {
 
 static void ConsumeEndOfLine(Tokeniser* tokeniser, char c) {
     // count \r\n and \n\r as a single end of line
+    if (tokeniser->at >= tokeniser->end) return;
     char const cp = *tokeniser->at;
     auto next = tokeniser->at + 1;
     if (next < tokeniser->end && ((c == '\r' && cp == '\n') || (c == '\n' && cp == '\r')))
@@ -227,9 +228,9 @@ static ValueOrError<Token, JsonParseError> GetToken(Tokeniser* tokeniser) {
             } else if (tokeniser->settings->allow_comments && c == '/') {
                 bool comment_consumed = false;
 
-                auto cp = *at;
-                auto next_cp = at + 1;
-                if (next_cp < end) {
+                if (at + 1 < end) {
+                    auto cp = *at;
+                    auto next_cp = at + 1;
                     if (cp == '/') {
                         at = next_cp;
                         while (at < end) {
@@ -249,7 +250,7 @@ static ValueOrError<Token, JsonParseError> GetToken(Tokeniser* tokeniser) {
                             at = at + 1;
                             if (IsEndOfLine(cp)) {
                                 ConsumeEndOfLine(tokeniser, cp);
-                            } else if (cp == '*') {
+                            } else if (cp == '*' && at < end) {
                                 cp = *at;
                                 next_cp = at + 1;
                                 if (cp == '/') {
@@ -378,6 +379,7 @@ static ValueOrError<Token, JsonParseError> GetToken(Tokeniser* tokeniser) {
                             }
                             ++sub_it;
                         }
+                        if (invalid_escape_chars) break;
                         char buffer[4] = {*it, *(it + 1), *(it + 2), *(it + 3)};
                         auto const codepoint =
                             ParseInt({buffer, sizeof(buffer)}, ParseIntBase::Hexadecimal).ValueOr(1);
