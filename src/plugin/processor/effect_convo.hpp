@@ -20,6 +20,7 @@ class ConvolutionReverb final : public Effect {
     ConvolutionReverb() : Effect(EffectType::ConvolutionReverb) {}
     ~ConvolutionReverb() {
         DeletedUnusedConvolvers();
+        DestroyIfConvolver(m_desired_convolver.Load(LoadMemoryOrder::Acquire));
         if (m_convolver) DestroyStereoConvolver(m_convolver);
     }
 
@@ -118,8 +119,10 @@ class ConvolutionReverb final : public Effect {
 
         auto old_convolver = Exchange(m_convolver, new_convolver);
 
-        // Let another thread to the deleting. Adding null is OK.
-        m_convolvers_to_delete.Push(old_convolver);
+        // Let another thread to the deleting. Adding null is OK. It can't be full: the main thread empties
+        // it before each new desired convolver, and we push at most once per desired convolver.
+        auto const pushed = m_convolvers_to_delete.Push(old_convolver);
+        ASSERT(pushed);
 
         m_remaining_tail_length = 0;
         m_filter = {};
@@ -136,10 +139,9 @@ class ConvolutionReverb final : public Effect {
     void ConvolutionIrDataLoaded(AudioData const* audio_data,
                                  sample_lib::ImpulseResponse::AudioProperties const& audio_props) {
         DeletedUnusedConvolvers();
-        if (audio_data)
-            m_desired_convolver.Store(CreateConvolver(*audio_data, audio_props), StoreMemoryOrder::Relaxed);
-        else
-            m_desired_convolver.Store(nullptr, StoreMemoryOrder::Relaxed);
+        auto const new_convolver = audio_data ? CreateConvolver(*audio_data, audio_props) : nullptr;
+        // If the audio thread hasn't consumed the previous one yet, it never will.
+        DestroyIfConvolver(m_desired_convolver.Exchange(new_convolver, RmwMemoryOrder::AcquireRelease));
     }
 
     // [main-thread]. Call this periodically
@@ -152,6 +154,11 @@ class ConvolutionReverb final : public Effect {
     Optional<sample_lib::IrId> ir_id = k_nullopt; // May temporarily differ to what is actually loaded
 
   private:
+    static void DestroyIfConvolver(StereoConvolver* desired_convolver) {
+        if (desired_convolver && (uintptr)desired_convolver != k_desired_convolver_consumed)
+            DestroyStereoConvolver(desired_convolver);
+    }
+
     static StereoConvolver* CreateConvolver(AudioData const& audio_data,
                                             sample_lib::ImpulseResponse::AudioProperties const& audio_props) {
         auto num_channels = audio_data.channels;
