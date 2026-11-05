@@ -1169,7 +1169,8 @@ static void AppendChangesFromNotifyBuffer(Span<u8 const> notify_data,
             FILE_NOTIFY_INFORMATION event;
             __builtin_memcpy_inline(&event, base, sizeof(event));
 
-            ASSERT((base + event.FileNameLength) <= end, "invalid data from ReadDirectoryChangesW");
+            ASSERT((usize)(end - base) - offsetof(FILE_NOTIFY_INFORMATION, FileName) >= event.FileNameLength,
+                   "invalid data from ReadDirectoryChangesW");
             constexpr DWORD k_valid_actions = FILE_ACTION_ADDED | FILE_ACTION_REMOVED | FILE_ACTION_MODIFIED |
                                               FILE_ACTION_RENAMED_OLD_NAME | FILE_ACTION_RENAMED_NEW_NAME;
             ASSERT((event.Action & ~k_valid_actions) == 0, "invalid data from ReadDirectoryChangesW");
