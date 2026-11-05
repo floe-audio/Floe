@@ -84,13 +84,20 @@ class EventHandler {
             }
         }
 
-        if (m_nesting < m_ignore_until_level && !m_handle_event_callback(handler_stack, event)) {
-            if (m_nesting != 1 &&
+        // The callback can push handlers, which can reallocate the stack and move this object.
+        ASSERT(this >= handler_stack.data && this < handler_stack.data + handler_stack.size);
+        auto const self_index = (usize)(this - handler_stack.data);
+        auto const unhandled =
+            m_nesting < m_ignore_until_level && !m_handle_event_callback(handler_stack, event);
+        auto& self = handler_stack[self_index];
+
+        if (unhandled) {
+            if (self.m_nesting != 1 &&
                 (event.type == EventType::ArrayStart || event.type == EventType::ObjectStart)) {
-                m_ignore_until_level = m_nesting - 1;
+                self.m_ignore_until_level = self.m_nesting - 1;
             }
-        } else if (m_nesting == m_ignore_until_level) {
-            m_ignore_until_level = LargestRepresentableValue<int>();
+        } else if (self.m_nesting == self.m_ignore_until_level) {
+            self.m_ignore_until_level = LargestRepresentableValue<int>();
         }
     }
 

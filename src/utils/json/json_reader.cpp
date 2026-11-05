@@ -251,6 +251,36 @@ TEST_CASE(TestJsonReader) {
                     settings)
                     .Succeeded());
     }
+
+    SUBCASE("handlers nested deeper than the initial stack capacity") {
+        constexpr usize k_depth = 32;
+        DynamicArrayBounded<char, 512> test;
+        for (auto _ : Range(k_depth))
+            dyn::AppendSpan(test, "{\"a\":"_s);
+        dyn::AppendSpan(test, "{\"skip\":{\"value\":2},\"value\":1}"_s);
+        for (auto _ : Range(k_depth))
+            dyn::Append(test, '}');
+
+        struct Context {
+            int value = 0;
+            int num_values_seen = 0;
+            EventCallbackRef nested_callback;
+        };
+        Context context;
+        auto const nested_callback = [&context](EventHandlerStack& handler_stack, Event const& event) {
+            if (SetIfMatchingObject(handler_stack, event, "a", context.nested_callback)) return true;
+            if (SetIfMatching(event, "value", context.value)) {
+                ++context.num_values_seen;
+                return true;
+            }
+            return false;
+        };
+        context.nested_callback = nested_callback;
+
+        REQUIRE(Parse(test, nested_callback, tester.scratch_arena, settings).Succeeded());
+        CHECK_EQ(context.value, 1);
+        CHECK_EQ(context.num_values_seen, 1);
+    }
     return k_success;
 }
 
