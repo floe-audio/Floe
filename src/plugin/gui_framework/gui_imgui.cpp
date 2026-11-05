@@ -150,6 +150,14 @@ int Narrow(char* out_buf, int out_buf_size, Char32 const* in_text, Char32 const*
 
 } // namespace imstring
 
+// The result is null-terminated, which IncrementUTF8Characters relies on.
+static void NarrowTextEditText(DynamicArray<char>& out_utf8, DynamicArray<Char32> const& text, int text_len) {
+    // 1 utf32 could at most be 4 utf8 bytes, plus the null-terminator.
+    dyn::Resize(out_utf8, ((usize)text_len * 4) + 1);
+    dyn::Resize(out_utf8,
+                (usize)imstring::Narrow(out_utf8.data, (int)out_utf8.size, text.data, text.data + text_len));
+}
+
 // namespace stb is based on dear imgui code
 // Copyright (c) 2014-2024 Omar Cornut
 // SPDX-License-Identifier: MIT
@@ -1631,15 +1639,7 @@ TextInputResult Context::TextInputBehaviour(TextInputBehaviourArgs const& args) 
     auto font = draw_list->fonts.Current();
     auto const font_size = font->font_size;
 
-    if (result.buffer_changed) {
-        dyn::Resize(textedit_text_utf8,
-                    (usize)textedit_len * 4); // 1 utf32 could at most be 4 utf8 bytes
-        dyn::Resize(textedit_text_utf8,
-                    (usize)imstring::Narrow(textedit_text_utf8.data,
-                                            (int)textedit_text_utf8.size,
-                                            textedit_text.data,
-                                            textedit_text.data + textedit_len));
-    }
+    if (result.buffer_changed) NarrowTextEditText(textedit_text_utf8, textedit_text, textedit_len);
 
     result.cursor = stb_state.cursor;
     result.selection_start = ::Min(stb_state.select_start, stb_state.select_end);
@@ -2376,7 +2376,9 @@ void Context::SetImguiTextEditState(String new_text, bool multiline) {
                                    new_text.data,
                                    new_text.data + new_text.size,
                                    nullptr);
-    dyn::Assign(textedit_text_utf8, new_text);
+    // Narrowed from the widened text rather than copied, so that it matches character-for-character even if
+    // new_text isn't valid UTF-8.
+    NarrowTextEditText(textedit_text_utf8, textedit_text, textedit_len);
 
     text_cursor_is_shown = true;
 }
