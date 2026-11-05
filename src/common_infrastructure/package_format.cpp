@@ -356,7 +356,7 @@ ReaderReadLibraryLua(PackageReader& package, String library_dir_in_zip, ArenaAll
         auto const file_stat = TRY(FileStat(package, file_index));
         if (file_stat.m_is_directory) continue;
         auto const path = PathWithoutTrailingSlash(file_stat.m_filename);
-        if (!StartsWithSpan(path, library_dir_in_zip)) continue;
+        if (!RelativePathIfInFolder(path, library_dir_in_zip)) continue;
 
         if (sample_lib::FilenameIsFloeLuaFile(path::Filename(path, path::Format::Posix))) {
             floe_lua_stat = file_stat;
@@ -437,6 +437,16 @@ ReaderChecksumValuesForDir(PackageReader& package, String dir_in_zip, ArenaAlloc
     return table.ToOwnedTable();
 }
 
+// Entry paths get joined onto destination folders, so they must not be able to escape them.
+static bool IsSafeEntryPath(String path) {
+    if (path::IsAbsolute(path, path::Format::Posix) || path::IsAbsolute(path, path::Format::Windows))
+        return false;
+    for (auto const part : SplitIterator {.whole = path, .token = '/', .skip_consecutive = true})
+        for (auto const sub_part : SplitIterator {.whole = part, .token = '\\', .skip_consecutive = true})
+            if (sub_part == ".."_s) return false;
+    return true;
+}
+
 ErrorCodeOr<void> ReaderInit(PackageReader& package) {
     mz_zip_zero_struct(&package.zip);
     package.zip.m_pRead =
@@ -459,10 +469,16 @@ ErrorCodeOr<void> ReaderInit(PackageReader& package) {
 
     if (!mz_zip_reader_init(&package.zip, package.zip_file_reader.size, 0)) return ZipReadError(package);
 
+    bool succeeded = false;
+    DEFER {
+        if (!succeeded) mz_zip_reader_end(&package.zip);
+    };
+
     bool known_subdirs = false;
     for (auto const file_index : Range(mz_zip_reader_get_num_files(&package.zip))) {
         auto const file_stat = TRY_OR(FileStat(package, file_index), return ZipReadError(package););
         auto const path = PathWithoutTrailingSlash(file_stat.m_filename);
+        if (!IsSafeEntryPath(path)) return ErrorCode {PackageError::FileCorrupted};
         for (auto const known_subdir : Array {k_libraries_subdir, k_presets_subdir}) {
             if (path == known_subdir || RelativePathIfInFolder(path, known_subdir)) {
                 known_subdirs = true;
@@ -471,11 +487,9 @@ ErrorCodeOr<void> ReaderInit(PackageReader& package) {
         }
     }
 
-    if (!known_subdirs) {
-        mz_zip_reader_end(&package.zip);
-        return {PackageError::NotFloePackage};
-    }
+    if (!known_subdirs) return {PackageError::NotFloePackage};
 
+    succeeded = true;
     return k_success;
 }
 
@@ -616,6 +630,26 @@ static ErrorCodeOr<Span<u8 const>> CreateEmptyTestPackage(tests::Tester& tester)
     return zip_data.ToOwnedSpan();
 }
 
+// Bypasses the writer's path handling so that the entry names are stored exactly as given.
+static Span<u8 const> CreateTestPackageWithRawEntries(tests::Tester& tester, Span<String const> entry_paths) {
+    DynamicArray<u8> zip_data {tester.scratch_arena};
+    auto writer = dyn::WriterFor(zip_data);
+    auto package = WriterCreate(writer);
+    DEFER { WriterDestroy(package); };
+
+    for (auto const entry_path : entry_paths) {
+        auto const added = mz_zip_writer_add_mem(&package,
+                                                 NullTerminated(entry_path, tester.scratch_arena),
+                                                 "x",
+                                                 1,
+                                                 (mz_uint)MZ_DEFAULT_COMPRESSION);
+        ASSERT(added);
+    }
+
+    WriterFinalise(package);
+    return zip_data.ToOwnedSpan();
+}
+
 static ErrorCodeOr<void> ReadTestPackage(tests::Tester& tester, Span<u8 const> zip_data) {
     auto reader = Reader::FromMemory(zip_data);
     DynamicArray<char> error_buffer {tester.scratch_arena};
@@ -688,6 +722,19 @@ TEST_CASE(TestIsInComponentSubdir) {
     return k_success;
 }
 
+TEST_CASE(TestIsSafeEntryPath) {
+    CHECK(IsSafeEntryPath("Libraries/Lib/file.flac"));
+    CHECK(IsSafeEntryPath("Libraries/Lib/..file.lua"));
+    CHECK(IsSafeEntryPath("Libraries/Lib/file..lua"));
+    CHECK(!IsSafeEntryPath("Libraries/Lib/../../evil.lua"));
+    CHECK(!IsSafeEntryPath("Libraries/Lib\\..\\..\\evil.lua"));
+    CHECK(!IsSafeEntryPath(".."));
+    CHECK(!IsSafeEntryPath("/etc/evil"));
+    CHECK(!IsSafeEntryPath("C:\\evil"));
+    CHECK(!IsSafeEntryPath("C:/evil"));
+    return k_success;
+}
+
 TEST_CASE(TestPackageFormat) {
     SUBCASE("valid package") {
         auto const zip_data = TRY(CreateValidTestPackage(tester));
@@ -707,6 +754,46 @@ TEST_CASE(TestPackageFormat) {
         CHECK(outcome.HasError());
     }
 
+    SUBCASE("entry paths escaping the package are rejected") {
+        for (auto const bad_path : Array {"Libraries/Lib/../../evil.lua"_s,
+                                          "Libraries/Lib\\..\\..\\evil.lua"_s,
+                                          "C:/Libraries/Lib/evil.lua"_s}) {
+            CAPTURE(bad_path);
+            auto const zip_data =
+                CreateTestPackageWithRawEntries(tester, Array {"Libraries/Lib/floe.lua"_s, bad_path});
+            auto reader = Reader::FromMemory(zip_data);
+            PackageReader package {reader};
+            auto const outcome = ReaderInit(package);
+            REQUIRE(outcome.HasError());
+            CHECK_EQ(outcome.Error(), ErrorCode {PackageError::FileCorrupted});
+        }
+    }
+
+    SUBCASE("library folder doesn't pick up a sibling sharing its name as a prefix") {
+        DynamicArray<u8> zip_data {tester.scratch_arena};
+        auto writer = dyn::WriterFor(zip_data);
+        auto zip = WriterCreate(writer);
+        DEFER { WriterDestroy(zip); };
+
+        auto lib = TRY(LoadTestLibrary(tester));
+        auto const lib_dir_in_zip = TRY(WriterAddLibrary(zip, *lib, tester.scratch_arena, "tester"));
+        REQUIRE(lib_dir_in_zip);
+        auto const sibling_lua_path = fmt::Format(tester.scratch_arena, "{}Extra/floe.lua", *lib_dir_in_zip);
+        REQUIRE(WriterAddFile(zip, sibling_lua_path, "not valid lua"_s.ToByteSpan()));
+        WriterFinalise(zip);
+
+        auto reader = Reader::FromMemory(zip_data);
+        PackageReader package {reader};
+        TRY(ReaderInit(package));
+        DEFER { ReaderDeinit(package); };
+
+        PackageComponentIndex iterator = 0;
+        auto const component = TRY(IteratePackageComponents(package, iterator, tester.scratch_arena));
+        REQUIRE(component);
+        REQUIRE(component->library);
+        CHECK_EQ(component->library->name, "Test Lua"_s);
+    }
+
     return k_success;
 }
 
@@ -716,4 +803,5 @@ TEST_REGISTRATION(RegisterPackageFormatTests) {
     REGISTER_TEST(package::TestPackageFormat);
     REGISTER_TEST(package::TestRelativePathIfInFolder);
     REGISTER_TEST(package::TestIsInComponentSubdir);
+    REGISTER_TEST(package::TestIsSafeEntryPath);
 }
