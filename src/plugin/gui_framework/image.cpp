@@ -196,7 +196,8 @@ static inline void BlurAxis(BlurAxisArgs const args) {
 }
 
 static bool BoxBlur(ImageF32 in, f32x4* out, u16 radius) {
-    radius = Min<u16>(radius, in.size.width / 2, in.size.height / 2);
+    // The moving average writes radius + 1 elements per edge, so the line must be at least 2*radius + 1 long.
+    radius = Min<u16>(radius, (in.size.width - 1) / 2, (in.size.height - 1) / 2);
     if (radius == 0) return false;
 
     Stopwatch stopwatch;
