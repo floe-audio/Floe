@@ -167,8 +167,9 @@ bool FontAtlas::Build() {
     struct FontTempBuildData {
         stbtt_fontinfo font_info;
         stbrp_rect* rects;
-        stbtt_pack_range* ranges;
-        u32 ranges_count;
+        // A single range per font: stb_truetype maps missing codepoints to the missing glyph by index
+        // within whichever range it found it, so with multiple ranges it reads out of bounds.
+        stbtt_pack_range range;
     };
     auto* tmp_array =
         (FontTempBuildData*)GlobalAllocOversizeAllowed({(usize)config_data.size * sizeof(FontTempBuildData)})
@@ -176,7 +177,6 @@ bool FontAtlas::Build() {
 
     // Initialize font information early (so we can error without any cleanup) + count glyphs
     u32 total_glyph_count = 0;
-    u32 total_glyph_range_count = 0;
     for (u32 input_i = 0; input_i < config_data.size; input_i++) {
         FontConfig& cfg = config_data[input_i];
         FontTempBuildData& tmp = tmp_array[input_i];
@@ -188,10 +188,8 @@ bool FontAtlas::Build() {
 
         // Count glyphs
         if (!cfg.glyph_ranges.size) cfg.glyph_ranges = GetGlyphRangesDefault();
-        for (auto const& glyph_range : cfg.glyph_ranges) {
+        for (auto const& glyph_range : cfg.glyph_ranges)
             total_glyph_count += (glyph_range.end - glyph_range.start) + 1;
-            total_glyph_range_count++;
-        }
     }
 
     // Start packing. We need a known width for the skyline algorithm. Using a cheap heuristic here to decide
@@ -219,18 +217,15 @@ bool FontAtlas::Build() {
     // Allocate packing character data and flag packed characters buffer as non-packed (x0=y0=x1=y1=0)
     u32 buf_packedchars_n = 0;
     u32 buf_rects_n = 0;
-    u32 buf_ranges_n = 0;
+    u32 buf_codepoints_n = 0;
     auto* buf_packedchars =
         (stbtt_packedchar*)GlobalAllocOversizeAllowed({total_glyph_count * sizeof(stbtt_packedchar)}).data;
     auto* buf_rects = (stbrp_rect*)GlobalAllocOversizeAllowed({total_glyph_count * sizeof(stbrp_rect)}).data;
-    auto* buf_ranges =
-        (stbtt_pack_range*)GlobalAllocOversizeAllowed({total_glyph_range_count * sizeof(stbtt_pack_range)})
-            .data;
+    auto* buf_codepoints = (int*)GlobalAllocOversizeAllowed({total_glyph_count * sizeof(int)}).data;
     ZeroMemory(buf_packedchars, total_glyph_count * sizeof(stbtt_packedchar));
     ZeroMemory(buf_rects,
                total_glyph_count *
                    sizeof(stbrp_rect)); // Unnecessary but let's clear this for the sake of sanity.
-    ZeroMemory(buf_ranges, total_glyph_range_count * sizeof(stbtt_pack_range));
 
     // First font pass: pack all glyphs (no rendering at this point, we are working with rectangles in an
     // infinitely tall texture at this point)
@@ -238,35 +233,26 @@ bool FontAtlas::Build() {
         FontConfig const& cfg = config_data[input_i];
         FontTempBuildData& tmp = tmp_array[input_i];
 
-        // Setup ranges
+        // Setup range
+        auto* const codepoints = buf_codepoints + buf_codepoints_n;
         u32 glyph_count = 0;
-        u32 glyph_ranges_count = 0;
-        for (auto const& glyph_range : cfg.glyph_ranges) {
-            glyph_count += (glyph_range.end - glyph_range.start) + 1;
-            glyph_ranges_count++;
-        }
-        tmp.ranges = buf_ranges + buf_ranges_n;
-        tmp.ranges_count = glyph_ranges_count;
-        buf_ranges_n += glyph_ranges_count;
-        for (u32 i = 0; i < glyph_ranges_count; i++) {
-            auto const in_range = cfg.glyph_ranges[i];
-            stbtt_pack_range& range = tmp.ranges[i];
-            range.font_size = cfg.size_pixels;
-            range.first_unicode_codepoint_in_range = in_range.start;
-            range.num_chars = (in_range.end - in_range.start) + 1;
-            range.chardata_for_range = buf_packedchars + buf_packedchars_n;
-            buf_packedchars_n += (u32)range.num_chars;
-        }
+        for (auto const& glyph_range : cfg.glyph_ranges)
+            for (auto codepoint = (int)glyph_range.start; codepoint <= (int)glyph_range.end; ++codepoint)
+                codepoints[glyph_count++] = codepoint;
+        buf_codepoints_n += glyph_count;
+
+        tmp.range = {};
+        tmp.range.font_size = cfg.size_pixels;
+        tmp.range.array_of_unicode_codepoints = codepoints;
+        tmp.range.num_chars = (int)glyph_count;
+        tmp.range.chardata_for_range = buf_packedchars + buf_packedchars_n;
+        buf_packedchars_n += glyph_count;
 
         // Pack
         tmp.rects = buf_rects + buf_rects_n;
         buf_rects_n += glyph_count;
         stbtt_PackSetOversampling(&spc, (unsigned)cfg.oversample_h, (unsigned)cfg.oversample_v);
-        int const n = stbtt_PackFontRangesGatherRects(&spc,
-                                                      &tmp.font_info,
-                                                      tmp.ranges,
-                                                      (int)tmp.ranges_count,
-                                                      tmp.rects);
+        int const n = stbtt_PackFontRangesGatherRects(&spc, &tmp.font_info, &tmp.range, 1, tmp.rects);
         stbrp_pack_rects((stbrp_context*)spc.pack_info, tmp.rects, n);
 
         // Extend texture height
@@ -275,7 +261,7 @@ bool FontAtlas::Build() {
     }
     ASSERT_EQ(buf_rects_n, total_glyph_count);
     ASSERT_EQ(buf_packedchars_n, total_glyph_count);
-    ASSERT_EQ(buf_ranges_n, total_glyph_range_count);
+    ASSERT_EQ(buf_codepoints_n, total_glyph_count);
 
     // Create texture
     tex_height = (int)NextPowerOf2((u32)tex_height);
@@ -289,11 +275,7 @@ bool FontAtlas::Build() {
         FontConfig const& cfg = config_data[input_i];
         FontTempBuildData& tmp = tmp_array[input_i];
         stbtt_PackSetOversampling(&spc, (unsigned)cfg.oversample_h, (unsigned)cfg.oversample_v);
-        stbtt_PackFontRangesRenderIntoRects(&spc,
-                                            &tmp.font_info,
-                                            tmp.ranges,
-                                            (int)tmp.ranges_count,
-                                            tmp.rects);
+        stbtt_PackFontRangesRenderIntoRects(&spc, &tmp.font_info, &tmp.range, 1, tmp.rects);
         tmp.rects = nullptr;
     }
 
@@ -329,50 +311,48 @@ bool FontAtlas::Build() {
 
         dst_font->fallback_glyph = nullptr; // Always clear fallback so FindGlyph can return null. It will
                                             // be set again in BuildLookupTable()
-        for (u32 i = 0; i < tmp.ranges_count; i++) {
-            stbtt_pack_range const& range = tmp.ranges[i];
-            for (int char_idx = 0; char_idx < range.num_chars; char_idx += 1) {
-                stbtt_packedchar const& pc = range.chardata_for_range[char_idx];
-                if (!pc.x0 && !pc.x1 && !pc.y0 && !pc.y1) continue;
+        stbtt_pack_range const& range = tmp.range;
+        for (int char_idx = 0; char_idx < range.num_chars; char_idx += 1) {
+            stbtt_packedchar const& pc = range.chardata_for_range[char_idx];
+            if (!pc.x0 && !pc.x1 && !pc.y0 && !pc.y1) continue;
 
-                int const codepoint = range.first_unicode_codepoint_in_range + char_idx;
-                if (cfg.merge_mode && dst_font->FindGlyph((Char16)codepoint)) continue;
+            int const codepoint = range.array_of_unicode_codepoints[char_idx];
+            if (cfg.merge_mode && dst_font->FindGlyph((Char16)codepoint)) continue;
 
-                stbtt_aligned_quad q;
-                f32 dummy_x = 0.0f;
-                f32 dummy_y = 0.0f;
-                stbtt_GetPackedQuad(range.chardata_for_range,
-                                    tex_width,
-                                    tex_height,
-                                    char_idx,
-                                    &dummy_x,
-                                    &dummy_y,
-                                    &q,
-                                    0);
+            stbtt_aligned_quad q;
+            f32 dummy_x = 0.0f;
+            f32 dummy_y = 0.0f;
+            stbtt_GetPackedQuad(range.chardata_for_range,
+                                tex_width,
+                                tex_height,
+                                char_idx,
+                                &dummy_x,
+                                &dummy_y,
+                                &q,
+                                0);
 
-                dst_font->glyphs.Resize(dst_font->glyphs.size + 1);
-                Font::Glyph& glyph = dst_font->glyphs.Back();
-                glyph.codepoint = (Char16)codepoint;
-                glyph.x0 = q.x0;
-                glyph.y0 = q.y0;
-                glyph.x1 = q.x1;
-                glyph.y1 = q.y1;
-                glyph.u0 = q.s0;
-                glyph.v0 = q.t0;
-                glyph.u1 = q.s1;
-                glyph.v1 = q.t1;
-                glyph.y0 += (f32)(int)(dst_font->ascent + off_y + 0.5f);
-                glyph.y1 += (f32)(int)(dst_font->ascent + off_y + 0.5f);
-                glyph.x_advance = (pc.xadvance + cfg.glyph_extra_spacing.x); // Bake spacing into XAdvance
-                if (cfg.pixel_snap_h) glyph.x_advance = (f32)(int)(glyph.x_advance + 0.5f);
-            }
+            dst_font->glyphs.Resize(dst_font->glyphs.size + 1);
+            Font::Glyph& glyph = dst_font->glyphs.Back();
+            glyph.codepoint = (Char16)codepoint;
+            glyph.x0 = q.x0;
+            glyph.y0 = q.y0;
+            glyph.x1 = q.x1;
+            glyph.y1 = q.y1;
+            glyph.u0 = q.s0;
+            glyph.v0 = q.t0;
+            glyph.u1 = q.s1;
+            glyph.v1 = q.t1;
+            glyph.y0 += (f32)(int)(dst_font->ascent + off_y + 0.5f);
+            glyph.y1 += (f32)(int)(dst_font->ascent + off_y + 0.5f);
+            glyph.x_advance = (pc.xadvance + cfg.glyph_extra_spacing.x); // Bake spacing into XAdvance
+            if (cfg.pixel_snap_h) glyph.x_advance = (f32)(int)(glyph.x_advance + 0.5f);
         }
         cfg.dst_font->BuildLookupTable();
     }
 
     // Cleanup temporaries
     GlobalFreeNoSize(buf_packedchars);
-    GlobalFreeNoSize(buf_ranges);
+    GlobalFreeNoSize(buf_codepoints);
     GlobalFreeNoSize(tmp_array);
 
     // Render into our custom data block
