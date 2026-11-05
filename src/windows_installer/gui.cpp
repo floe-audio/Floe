@@ -145,9 +145,10 @@ static WCHAR* NullTermWideString(GuiFramework& framework, String str) {
 static DynamicArray<wchar_t> WindowText(Allocator& a, HWND window) {
     auto len = GetWindowTextLengthW(window);
     DynamicArray<wchar_t> buffer {a};
-    dyn::Resize(buffer, (usize)len);
-    int num_copied = GetWindowTextW(window, buffer.data, len + 1);
-    dyn::Resize(buffer, (usize)num_copied);
+    if (len <= 0) return buffer;
+    dyn::Resize(buffer, (usize)len + 1);
+    auto const num_copied = GetWindowTextW(window, buffer.data, len + 1);
+    dyn::Resize(buffer, (usize)Clamp(num_copied, 0, len));
     return buffer;
 }
 
