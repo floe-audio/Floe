@@ -22,6 +22,7 @@ struct PresetBrowserContext {
         auto const [snapshot, handle] = BeginReadFolders(preset_server, arena);
         presets_snapshot = snapshot;
         preset_read_handle = handle;
+        cached_current_loaded = k_nullopt; // It holds indices into the previous snapshot.
     }
     void Deinit() {
         if (--init != 0) return;
