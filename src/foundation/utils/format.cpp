@@ -194,6 +194,14 @@ TEST_CASE(TestFormat) {
         CHECK_EQ(fmt::PrettyFileSize(1024 * 1024), "1 MB"_s);
         CHECK_EQ(fmt::PrettyFileSize(1024 * 1024 * 1024), "1.00 GB"_s);
         CHECK_EQ(fmt::PrettyFileSize((1024 * 1024 * 1024) + (1024 * 1024 * 100)), "1.10 GB"_s);
+        CHECK_EQ(fmt::PrettyFileSize(100.0 * 1024 * 1024 * 1024), "100.00 GB"_s);
+        CHECK_EQ(fmt::PrettyFileSize(1023.999 * 1024 * 1024 * 1024), "1024.00 GB"_s);
+        CHECK_EQ(fmt::PrettyFileSize(5.0 * 1024 * 1024 * 1024 * 1024 * 1024), "5.00 PB"_s);
+    }
+
+    SUBCASE("huge floats") {
+        CHECK_EQ(fmt::Format(a, "{.0}", 1e30).size, 31u);
+        CHECK_EQ(fmt::Format(a, "{.2}", 1e300).size, 304u);
     }
 
     return k_success;

@@ -208,18 +208,21 @@ PUBLIC ErrorCodeOr<void> ValueToString(Writer writer, T const& value, FormatOpti
     else if constexpr (FloatingPoint<Type>) {
         u32 format_buf_size = 0;
         char format_buf[8];
+        ASSERT(options.float_precision.size <= ArraySize(format_buf) - 3);
         format_buf[format_buf_size++] = '%';
         for (auto c : options.float_precision)
             format_buf[format_buf_size++] = c;
         format_buf[format_buf_size++] = options.auto_float_format ? 'g' : 'f';
         format_buf[format_buf_size++] = '\0';
 
-        char buffer[32];
+        // %f of DBL_MAX is 309 integer digits, plus sign, point and precision
+        char buffer[400];
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdouble-promotion"
         auto const num_written = stbsp_snprintf(buffer, (int)ArraySize(buffer), format_buf, value);
 #pragma clang diagnostic pop
         if (num_written < 0) Panic("invalid snprintf format");
+        ASSERT((usize)num_written < ArraySize(buffer));
         TRY(PadToRequiredWidthIfNeeded(writer, options, (usize)num_written));
         TRY(writer.WriteChars(String {buffer, (usize)num_written}));
         return k_success;
@@ -679,29 +682,28 @@ PUBLIC_INLINE DynamicArrayBounded<char, k_size> JoinInline(Span<String const> st
     return result;
 }
 
-// buffer must be at least 8 bytes
+// buffer must be at least 16 bytes
 PUBLIC usize PrettyFileSize(f64 size, char* buffer) {
+    constexpr int k_buffer_size = 16;
     char const* units[] = {"B", "kB", "MB", "GB", "TB", "PB"};
     u32 unit = 0;
 
-    // Max string: "999.99 PB" (9 chars), so we need to limit the size
-    if (size >= 1000.0 * 1024.0 * 1024.0 * 1024.0 * 1024.0) // 1000 PB
-        return 0;
+    // Max string: "1024.00 PB" (10 chars)
+    if (size >= 1024.0 * 1024.0 * 1024.0 * 1024.0 * 1024.0 * 1024.0) return 0;
 
     while (size >= 1024.0 && unit < 5) {
         size /= 1024.0;
         unit++;
     }
 
-    // Format based on unit size
-    if (unit >= 3) // GB and above
-        return CheckedCast<usize>(stbsp_snprintf(buffer, 8, "%.2f %s", size, units[unit]));
-    else
-        return CheckedCast<usize>(stbsp_snprintf(buffer, 8, "%.0f %s", size, units[unit]));
+    auto const num_written =
+        stbsp_snprintf(buffer, k_buffer_size, unit >= 3 ? "%.2f %s" : "%.0f %s", size, units[unit]);
+    ASSERT(num_written >= 0 && num_written < k_buffer_size);
+    return (usize)num_written;
 }
 
-PUBLIC_INLINE DynamicArrayBounded<char, 8> PrettyFileSize(f64 size) {
-    DynamicArrayBounded<char, 8> result;
+PUBLIC_INLINE DynamicArrayBounded<char, 16> PrettyFileSize(f64 size) {
+    DynamicArrayBounded<char, 16> result;
     result.size = PrettyFileSize(size, result.data);
     return result;
 }
