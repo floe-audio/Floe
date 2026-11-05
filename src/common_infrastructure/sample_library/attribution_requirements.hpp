@@ -44,9 +44,11 @@ struct AttributionsStore {
     }
 
     bool SerialiseString(String& str, ArenaAllocator& arena) {
-        auto size = (u16)Min(str.size, LargestRepresentableValue<u16>() - 1uz);
+        // Older Floe versions in other processes assert that strings in the store are under 200 bytes.
+        auto size = (u16)Min(str.size, 199uz);
+        while (size && size < str.size && ((u8)str[size] & 0xc0) == 0x80)
+            --size;
         if (!SerialiseNumber(size)) return false;
-        ASSERT(size < 200);
         if (mode == Mode::Read) {
             if (pos + size > data.size) return false;
             str = arena.Clone(Span {(char*)data.data + pos, size});
@@ -54,8 +56,6 @@ struct AttributionsStore {
             return true;
         } else {
             if (pos + size > data.size) return false;
-            for (auto c : str)
-                ASSERT(c >= 32 && c <= 126);
             CopyMemory(data.data + pos, str.data, size);
             pos += size;
             return true;
