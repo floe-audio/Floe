@@ -138,15 +138,9 @@ class Malloc final : public Allocator {
                 if (cmd.new_size > cmd.allocation.size) {
                     // IMPROVE: use realloc if no move_mem
 
-                    auto const alignment =
-                        cmd.allocation.data
-                            ? Max((uintptr)cmd.allocation.data & (~(uintptr)cmd.allocation.data - 1),
-                                  k_max_alignment)
-                            : k_max_alignment;
-
                     // fallback: new allocation and move memory
-                    auto new_allocation =
-                        GlobalAllocOversizeAllowed({.size = cmd.new_size, .align = alignment});
+                    auto new_allocation = GlobalAllocOversizeAllowed(
+                        {.size = cmd.new_size, .align = AlignmentToPreserveOnResize(cmd.allocation.data)});
                     if (cmd.move_memory_handler.function)
                         cmd.move_memory_handler.function({.context = cmd.move_memory_handler.context,
                                                           .destination = new_allocation.data,
@@ -218,7 +212,7 @@ class PageAllocator final : public Allocator {
                 } else if (cmd.new_size > cmd.allocation.size) {
                     // IMPROVE: can the OS grow the page?
 
-                    return ResizeUsingNewAllocation(cmd, k_max_alignment);
+                    return ResizeUsingNewAllocation(cmd);
                 } else {
                     return cmd.allocation;
                 }

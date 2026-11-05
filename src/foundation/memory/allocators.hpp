@@ -222,10 +222,18 @@ struct Allocator {
         Free(data.ToByteSpan());
     }
 
-    Span<u8> ResizeUsingNewAllocation(ResizeCommand const& cmd, usize alignment) {
+    // A ResizeCommand doesn't carry the original alignment, so we keep whatever alignment the existing
+    // pointer has. Capped so that an address that happens to land on a large boundary doesn't cause a huge
+    // alignment.
+    static usize AlignmentToPreserveOnResize(void const* existing_data) {
+        auto const address = (uintptr)existing_data;
+        return Clamp<usize>(address & (~address + 1), k_max_alignment, 64);
+    }
+
+    Span<u8> ResizeUsingNewAllocation(ResizeCommand const& cmd) {
         auto new_allocation = Allocate({
             .size = cmd.new_size,
-            .alignment = alignment,
+            .alignment = AlignmentToPreserveOnResize(cmd.allocation.data),
             .allow_oversized_result = cmd.allow_oversize_result,
         });
         if (!new_allocation.size) return {};
@@ -288,7 +296,7 @@ static constexpr Optional<Span<u8>>
 HandleBumpAllocation(Span<u8> stack, usize& cursor, AllocateCommand const& cmd) {
     if (!stack.size) return k_nullopt;
 
-    auto const align_to_add = BytesToAddForAlignment(cursor, cmd.alignment);
+    auto const align_to_add = BytesToAddForAlignment((uintptr)(stack.data + cursor), cmd.alignment);
     auto const aligned_cursor = cursor + align_to_add;
     auto const cursor_after_allocation = aligned_cursor + cmd.size;
     if (cursor_after_allocation <= stack.size) {
@@ -425,7 +433,12 @@ struct ArenaAllocator : public Allocator {
             case AllocatorCommand::Allocate: {
                 auto const& cmd = command_union.Get<AllocateCommand>();
 
-                auto current_region_header = first ? first : CreateAndPrependRegionToList(cmd.size, 0);
+                // Regions are only aligned to k_max_alignment so larger alignments might need padding.
+                auto const size_with_padding =
+                    cmd.size + (cmd.alignment > k_max_alignment ? cmd.alignment - k_max_alignment : 0);
+
+                auto current_region_header =
+                    first ? first : CreateAndPrependRegionToList(size_with_padding, 0);
                 while (true) {
                     if (auto allocation = HandleBumpAllocation(current_region_header->BufferView(),
                                                                current_region_cursor,
@@ -434,7 +447,7 @@ struct ArenaAllocator : public Allocator {
                     }
 
                     current_region_header =
-                        CreateAndPrependRegionToList(cmd.size, current_region_header->BufferSize());
+                        CreateAndPrependRegionToList(size_with_padding, current_region_header->BufferSize());
                 }
                 PanicIfReached();
                 return {};
@@ -455,7 +468,7 @@ struct ArenaAllocator : public Allocator {
                     if (auto allocation = TryGrowingInPlace(first->BufferView(), current_region_cursor, cmd))
                         return *allocation;
 
-                    return ResizeUsingNewAllocation(cmd, k_max_alignment);
+                    return ResizeUsingNewAllocation(cmd);
                 } else if (cmd.new_size < cmd.allocation.size) {
                     return HandleBumpShrink(cmd.allocation,
                                             cmd.new_size,
@@ -644,7 +657,7 @@ class FixedSizeAllocator : public Allocator {
                 if (ContainsPointer(stack, cmd.allocation.data)) {
                     if (cmd.new_size > cmd.allocation.size) {
                         if (auto allocation = TryGrowingInPlace(stack, m_cursor, cmd)) return *allocation;
-                        return ResizeUsingNewAllocation(cmd, k_max_alignment);
+                        return ResizeUsingNewAllocation(cmd);
                     } else {
                         return HandleBumpShrink(cmd.allocation, cmd.new_size, stack.data, m_cursor);
                     }

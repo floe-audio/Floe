@@ -53,7 +53,7 @@ TEST_CASE(TestAllocatorTypes) {
 
     SUBCASE("all sizes and alignments are handled") {
         usize const sizes[] = {1, 2, 3, 99, 7000};
-        usize const alignments[] = {1, 2, 4, 8, 16, 32};
+        usize const alignments[] = {1, 2, 4, 8, 16, 32, 64};
         auto const total_size = ArraySize(sizes) * ArraySize(alignments);
         DynamicArrayBounded<Span<u8>, total_size> allocs;
         DynamicArrayBounded<void*, total_size> set;
@@ -61,12 +61,27 @@ TEST_CASE(TestAllocatorTypes) {
             for (auto align : alignments) {
                 dyn::Append(allocs, a.Allocate({s, align, true}));
                 REQUIRE(Last(allocs).data != nullptr);
+                CHECK(IsAligned(Last(allocs).data, align));
                 dyn::AppendIfNotAlreadyThere(set, Last(allocs).data);
             }
         }
         REQUIRE(set.size == total_size);
         for (auto alloc : allocs)
             a.Free(alloc);
+    }
+
+    SUBCASE("growing an over-aligned allocation keeps its alignment") {
+        constexpr usize k_alignment = 64;
+        auto data = a.Allocate({1, k_alignment, false});
+        // Prevent growing in place.
+        auto const blocker = a.Allocate({1, 1, false});
+        DEFER { a.Free(blocker); };
+        for (auto const new_size : Array {100uz, 5000uz, 20000uz}) {
+            data = a.Resize({.allocation = data, .new_size = new_size});
+            REQUIRE(data.data != nullptr);
+            CHECK(IsAligned(data.data, k_alignment));
+        }
+        a.Free(data);
     }
 
     SUBCASE("reallocating an existing block still contains the same data") {
