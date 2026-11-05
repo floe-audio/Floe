@@ -23,12 +23,14 @@ PUBLIC constexpr Optional<usize> WidenToBuffer(wchar_t* out, String utf8_str) {
             out[out_size++] = (wchar_t)*str;
             str++;
         } else if ((*str & 0xe0) == 0xc0) {
+            if (end - str < 2) return text_encoding_error;
             if (*str < 0xc2) return text_encoding_error;
             c = ((u32)*str++ & 0x1f) << 6;
             if ((*str & 0xc0) != 0x80) return text_encoding_error;
             out[out_size++] = (wchar_t)(c + (*str & 0x3f));
             str++;
         } else if ((*str & 0xf0) == 0xe0) {
+            if (end - str < 3) return text_encoding_error;
             if (*str == 0xe0 && (str[1] < 0xa0 || str[1] > 0xbf)) return text_encoding_error;
             if (*str == 0xed && str[1] > 0x9f) return text_encoding_error; // str[1] < 0x80 is checked below
             c = ((u32)*str++ & 0x0f) << 12;
@@ -38,6 +40,7 @@ PUBLIC constexpr Optional<usize> WidenToBuffer(wchar_t* out, String utf8_str) {
             out[out_size++] = (wchar_t)(c + (*str & 0x3f));
             str++;
         } else if ((*str & 0xf8) == 0xf0) {
+            if (end - str < 4) return text_encoding_error;
             if (*str > 0xf4) return text_encoding_error;
             if (*str == 0xf0 && (str[1] < 0x90 || str[1] > 0xbf)) return text_encoding_error;
             if (*str == 0xf4 && str[1] > 0x8f) return text_encoding_error; // str[1] < 0x80 is checked below
