@@ -546,8 +546,12 @@ bool ChangeInstrumentIfNeededAndReset(LayerProcessor& layer,
                                       VoicePool& voice_pool,
                                       AudioProcessingContext const& context) {
     ZoneScoped;
-    auto desired_inst = layer.desired_inst.Consume();
+    auto const desired_inst_value = layer.desired_inst.Peek();
+    auto const desired_inst = LayerProcessor::DesiredInst::Decode(desired_inst_value);
 
+    DEFER {
+        if (desired_inst) layer.desired_inst.MarkConsumed(desired_inst_value);
+    };
     DEFER { ResetLayerAudioProcessing(layer); };
 
     if (!desired_inst) return false;

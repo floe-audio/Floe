@@ -229,8 +229,17 @@ struct LayerProcessor {
             value.Store((uintptr)i, StoreMemoryOrder::Release);
         }
         void SetNone() { value.Store(0, StoreMemoryOrder::Release); }
-        Optional<InstrumentUnwrapped> Consume() {
-            auto v = value.Exchange(k_consumed, RmwMemoryOrder::Relaxed);
+        // The main thread releases the old instrument once IsConsumed() is true, so only call MarkConsumed()
+        // once the audio thread has completely finished with the old instrument.
+        u64 Peek() const { return value.Load(LoadMemoryOrder::Acquire); }
+        void MarkConsumed(u64 peeked_value) {
+            // If a new value has been set since peeking, it will be consumed next time.
+            value.CompareExchangeStrong(peeked_value,
+                                        k_consumed,
+                                        RmwMemoryOrder::Release,
+                                        LoadMemoryOrder::Relaxed);
+        }
+        static Optional<InstrumentUnwrapped> Decode(u64 v) {
             if (v == k_consumed) return k_nullopt;
             if (v == 0) return InstrumentType::None;
             for (auto const w : Range((u64)WaveformType::Count))
