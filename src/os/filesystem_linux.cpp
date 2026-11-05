@@ -671,10 +671,12 @@ static ErrorCodeOr<LinuxWatchedDirectory*> WatchDirectory(DirectoryWatcher::Watc
                     dyn::Resize(full_subpath, dir.path.size);
                     path::JoinAppend(full_subpath, subpath);
 
+                    auto const subdir_watch_id =
+                        TRY(InotifyWatch(inotify_id, dyn::NullTerminated(full_subpath)));
                     auto subdir = subdirs.PrependUninitialised(dir.arena);
                     PLACEMENT_NEW(subdir)
                     LinuxWatchedDirectory::SubDir {
-                        .watch_id = TRY(InotifyWatch(inotify_id, dyn::NullTerminated(full_subpath))),
+                        .watch_id = subdir_watch_id,
                         .subpath = path_pool.Clone(subpath, dir.arena),
                         .watch_id_invalidated = false,
                     };
