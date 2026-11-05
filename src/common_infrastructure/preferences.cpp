@@ -438,6 +438,15 @@ ErrorCodeOr<void> WritePreferencesTable(PreferencesTable const& table, Writer wr
         return !IsAligned(value->next, alignof(Value*));
     };
 
+    // Un-dirty, including when a write fails part way through.
+    bool all_written = false;
+    DEFER {
+        for (auto const [key, value_list, _] : table) {
+            if (all_written) ASSERT(is_dirty(value_list));
+            if (is_dirty(value_list)) clear_dirty(value_list);
+        }
+    };
+
     // Write sectionless keys first
     for (auto const [key, value_list, _] : table) {
         KeyValueUnion key_value {""_s};
@@ -485,12 +494,7 @@ ErrorCodeOr<void> WritePreferencesTable(PreferencesTable const& table, Writer wr
         }
     }
 
-    // Un-dirty
-    for (auto const [key, value_list, _] : table) {
-        ASSERT(is_dirty(value_list));
-        clear_dirty(value_list);
-    }
-
+    all_written = true;
     return k_success;
 }
 
@@ -785,6 +789,9 @@ void SetValue(Preferences& prefs, Key const& key, ValueUnion const& value, SetVa
         // If there's only one value and it's the same as the new value, we don't need to do anything.
         if (existing_values->next == nullptr && *existing_values == value) return;
 
+        // Clone before freeing because value might reference one of the existing values.
+        auto const cloned_value = CloneValueUnion(value, prefs.path_pool, prefs.arena);
+
         // Free the content of all existing values
         for (auto node = existing_values; node;) {
             FreeValueUnion(*node, prefs.path_pool);
@@ -801,7 +808,7 @@ void SetValue(Preferences& prefs, Key const& key, ValueUnion const& value, SetVa
         }
 
         // We can reuse the first node.
-        *existing_values = {CloneValueUnion(value, prefs.path_pool, prefs.arena)};
+        *existing_values = {cloned_value};
         new_value = existing_values;
     } else {
         if (options.overwrite_only) return;
@@ -897,9 +904,11 @@ bool RemoveValue(Preferences& prefs, Key const& key, ValueUnion const& value, Re
 
     if (removed) {
         if (existing_values == nullptr) {
-            FreeKey(key, prefs.path_pool);
+            // Freed last because key might be the stored key.
+            auto const stored_key = existing_element->key;
             prefs.DeleteElement(existing_element);
             MarkChanged(prefs, key, nullptr, options);
+            FreeKey(stored_key, prefs.path_pool);
         } else {
             MarkChanged(prefs, key, existing_values, options);
         }
@@ -910,22 +919,22 @@ bool RemoveValue(Preferences& prefs, Key const& key, ValueUnion const& value, Re
 
 void Remove(Preferences& prefs, Key const& key, RemoveValueOptions options) {
     ASSERT(IsKeyValid(key));
-    auto existing = prefs.Find(key);
-    if (!existing) return;
+    auto const existing_element = prefs.FindElement(key);
+    if (!existing_element) return;
 
-    {
-        for (auto node = *existing; node;) {
-            FreeValueUnion(*node, prefs.path_pool);
-            auto next = node->next;
-            node->next = prefs.free_values;
-            prefs.free_values = node;
-            node = next;
-        }
-        FreeKey(key, prefs.path_pool);
-        prefs.Delete(key);
+    for (auto node = existing_element->data; node;) {
+        FreeValueUnion(*node, prefs.path_pool);
+        auto next = node->next;
+        node->next = prefs.free_values;
+        prefs.free_values = node;
+        node = next;
     }
 
+    // Freed last because key might be the stored key.
+    auto const stored_key = existing_element->key;
+    prefs.DeleteElement(existing_element);
     MarkChanged(prefs, key, nullptr, options);
+    FreeKey(stored_key, prefs.path_pool);
 }
 
 Optional<usize> Init(Preferences& prefs, Span<String const> possible_paths) {
