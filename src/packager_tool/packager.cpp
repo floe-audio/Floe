@@ -308,6 +308,7 @@ struct VerbInputs {
     Span<String> preset_folders;
     Span<String> input_packages;
     Optional<String> package_name_override;
+    Optional<String> package_key_hex;
     bool prune {};
     bool omit_about_doc {};
 };
@@ -749,6 +750,8 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             inputs.omit_about_doc = parsed.args[ToInt(PackArgId::NoAboutDoc)].was_provided;
             if (parsed.args[ToInt(PackArgId::PackageName)].was_provided)
                 inputs.package_name_override = parsed.args[ToInt(PackArgId::PackageName)].values[0];
+            if (parsed.args[ToInt(PackArgId::PackageKey)].was_provided)
+                inputs.package_key_hex = parsed.args[ToInt(PackArgId::PackageKey)].values[0];
             break;
         }
         case PackagerVerb::Info: {
@@ -1020,11 +1023,10 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
     {
         package::WriterFinalise(package);
 
-        auto const& key_arg = parsed.args[ToInt(PackArgId::PackageKey)];
-        auto const should_encrypt = create_package && key_arg.was_provided;
+        auto const should_encrypt = inputs.package_key_hex.HasValue();
         Array<u8, encrypted_package::k_key_size> package_key {};
         if (should_encrypt) {
-            if (!ParseHexBytes(key_arg.values[0], package_key)) {
+            if (!ParseHexBytes(*inputs.package_key_hex, package_key)) {
                 StdPrintF(StdStream::Err,
                           "Error: --package-key must be a {}-character hex string\n",
                           encrypted_package::k_key_size * 2);
