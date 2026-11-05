@@ -79,6 +79,11 @@ void WakeWaitingThreads(Atomic<u32>& value, NumWaitingThreads num_waiters) {
 }
 
 WaitResult WaitIfValueIsExpected(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds) {
+    // __ulock_wait2 treats a timeout of 0 as no timeout.
+    if (timeout_milliseconds && *timeout_milliseconds == 0) {
+        if (value.Load(LoadMemoryOrder::Acquire) == expected) return WaitResult::TimedOut;
+        return WaitResult::WokenOrSpuriousOrNotExpected;
+    }
     u64 const timeout_ns = timeout_milliseconds ? (u64)*timeout_milliseconds * 1000 * 1000 : 0;
     auto const return_code =
         __ulock_wait2(UL_COMPARE_AND_WAIT | ULF_NO_ERRNO, &value.raw, expected, timeout_ns, 0);
