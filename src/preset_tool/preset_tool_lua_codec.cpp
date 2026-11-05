@@ -184,7 +184,8 @@ struct ParamValuesH {
         while (lua_next(lua, -2) != 0) {
             Optional<ParamIndex> param_index;
             Optional<f32> new_linear;
-            if (lua_isstring(lua, -2)) {
+            // lua_tolstring on a number key converts it in place, which breaks lua_next.
+            if (lua_type(lua, -2) == LUA_TSTRING) {
                 size_t key_len;
                 auto const key_str = lua_tolstring(lua, -2, &key_len);
                 param_index = FindParamByIdString({key_str, key_len});
