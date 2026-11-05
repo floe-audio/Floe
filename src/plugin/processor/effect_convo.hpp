@@ -76,8 +76,6 @@ class ConvolutionReverb final : public Effect {
                     wet_channels[0],
                     wet_channels[1],
                     (int)frames.size);
-        } else {
-            SimdZeroAlignedBuffer(wet_channels[0], frames.size * 2);
         }
 
         for (auto [frame_index, frame] : Enumerate<u32>(frames)) {
