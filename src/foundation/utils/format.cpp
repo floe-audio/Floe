@@ -180,6 +180,11 @@ TEST_CASE(TestFormat) {
         CHECK_EQ(fmt::JoinInline<8>(Array {"a"_s, "b"_s}, ""), "ab"_s);
         CHECK_EQ(fmt::JoinInline<8>(Array {"a"_s, "b"_s, "c"_s}, ""), "abc"_s);
         CHECK_EQ(fmt::JoinInline<8>(Array {"a"_s, "b"_s, "c"_s}, ","), "a,b,c"_s);
+        CHECK_EQ(fmt::JoinInline<8>(Array {"a"_s, ""_s, "b"_s}, ","), "a,,b"_s);
+        CHECK_EQ(fmt::JoinInline<4>(Array {"abcdef"_s}, ""), "abcd"_s);
+        CHECK_EQ(fmt::JoinInline<4>(Array {"abc"_s, "d"_s}, " - "), "abc "_s);
+        CHECK_EQ(fmt::JoinInline<4>(Array {"ab"_s, "cd"_s}, ","), "ab,c"_s);
+        CHECK_EQ(fmt::JoinInline<4>(Array {"abcd"_s, "e"_s}, ","), "abcd"_s);
     }
 
     SUBCASE("PrettyFileSize") {

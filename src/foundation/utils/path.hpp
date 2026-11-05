@@ -342,6 +342,7 @@ PUBLIC_INLINE DynamicArrayBounded<char, k_size> JoinInline(Span<String const> pa
                                                            Format format = Format::Native) {
     if (!parts.size) return {};
     DynamicArrayBounded<char, k_size> buffer;
+    ASSERT(TotalSize(parts) + parts.size - 1 <= k_size);
     buffer.size = TotalSize(parts) + parts.size - 1;
     usize pos = 0;
     for (auto const part : parts) {

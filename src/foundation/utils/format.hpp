@@ -666,14 +666,14 @@ template <usize k_size>
 PUBLIC_INLINE DynamicArrayBounded<char, k_size> JoinInline(Span<String const> strings,
                                                            String separator = {}) {
     DynamicArrayBounded<char, k_size> result;
+    auto const append_truncated = [&](String str) {
+        dyn::AppendSpanAssumeCapacity(result, str.SubSpan(0, Min(k_size - result.size, str.size)));
+    };
 
     for (auto const [i, part] : Enumerate(strings)) {
-        if (auto const p = part.SubSpan(0, Min(k_size - result.size, part.size)); p.size)
-            WriteAndIncrement(result.size, (char*)result.data, part);
-        else
-            return result;
-        if (separator.size && i != strings.size - 1 && result.size != k_size)
-            WriteAndIncrement(result.size, (char*)result.data, separator);
+        if (result.size == k_size) break;
+        append_truncated(part);
+        if (separator.size && i != strings.size - 1) append_truncated(separator);
     }
 
     return result;
