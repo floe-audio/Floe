@@ -288,7 +288,7 @@ class JsonStateParser {
                     }
                     case ParamValueType::String: {
                         auto const mappings = legacy_mappings::MenuNameMappingsForParam(index);
-                        ASSERT(mappings.size);
+                        if (!mappings.size) break;
                         param_value = legacy_mappings::FindMenuValue(mappings, m_param_value.Get<String>());
                         break;
                     }
@@ -392,7 +392,10 @@ class JsonStateParser {
                                     break;
                                 }
 
-                                ASSERT(id.size <= k_max_instrument_id_size);
+                                if (id.size > k_max_instrument_id_size) {
+                                    m_state.inst_ids[m_inst_index] = InstrumentType::None;
+                                    break;
+                                }
 
                                 m_state.inst_ids[m_inst_index] = sample_lib::InstrumentId {
                                     .library = {}, // filled in later
@@ -433,8 +436,7 @@ class JsonStateParser {
 
         String fx_name {};
         if (SetIfMatchingRef(event, "", fx_name)) {
-            auto const e = FindEffectFromLegacyId(fx_name);
-            dyn::AppendIfNotAlreadyThere(fx_order, e);
+            if (auto const e = FindEffectFromLegacyId(fx_name)) dyn::AppendIfNotAlreadyThere(fx_order, *e);
             return true;
         }
         return false;
@@ -459,7 +461,7 @@ class JsonStateParser {
         return false;
     }
 
-    static EffectType FindEffectFromLegacyId(String id) {
+    static Optional<EffectType> FindEffectFromLegacyId(String id) {
         if (id == "dist"_s) return EffectType::Distortion;
         if (id == "bitcrush"_s) return EffectType::BitCrush;
         if (id == "comp"_s) return EffectType::Compressor;
@@ -470,9 +472,7 @@ class JsonStateParser {
         if (id == "delay"_s) return EffectType::Delay;
         if (id == "phaser"_s) return EffectType::Phaser;
         if (id == "conv"_s) return EffectType::ConvolutionReverb;
-
-        PanicIfReached();
-        return {};
+        return k_nullopt;
     }
 
     StateSnapshot& m_state;
@@ -1032,7 +1032,7 @@ ErrorCodeOr<void> DecodeMirageJsonState(StateSnapshot& state,
             parser.non_existent_params[ToInt(NoLongerExistingParam::ConvolutionLegacyMirageIrName)];
         if (old_param.tag == JsonStateParser::ParamValueType::String) {
             auto const ir_name = old_param.Get<String>();
-            if (ir_name.size && ir_name != "None"_s) {
+            if (ir_name.size && ir_name.size <= k_max_ir_id_size && ir_name != "None"_s) {
                 state.ir_id = sample_lib::IrId {
                     .library = sample_lib::k_mirage_compat_library_id,
                     .ir_id = ir_name,
@@ -1485,7 +1485,7 @@ struct StateCoder {
         if (version >= version_added) {
             u32 check = counter;
             TRY(CodeNumber(check, version_added));
-            ASSERT_EQ(check, counter);
+            if (check != counter) return ErrorCode(CommonError::InvalidFileFormat);
             counter++;
         }
         return k_success;
@@ -1932,7 +1932,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
 
     // =======================================================================================================
     {
-        bool has_ir {};
+        u8 has_ir {};
         if (coder.IsWriting()) has_ir = state.ir_id.HasValue();
         TRY(coder.CodeNumber(has_ir, StateVersion::Initial));
 
@@ -2046,6 +2046,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
             if (coder.IsReading() && args.source == StateSource::Daw) {
                 auto const index = ParamIdToIndex(m.param_id);
                 if (!index) continue; // Experimental params may be removed
+                if (m.cc_num >= 128) continue;
                 state.extras.performance_controls.param_learned_ccs[(usize)*index].Set(m.cc_num);
             }
         }
@@ -2108,7 +2109,9 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         // automatically and DAW state captured. From AddedPresetUuid onward it's a stable UUID embedded
         // in preset files; DAW state continues to carry it across saves.
         TRY(coder.CodeNumber(state.extras.preset_uuid, k_added));
-        TRY(coder.CodeNumber(state.extras.modified_from_preset, k_added));
+        u8 modified_from_preset = state.extras.modified_from_preset;
+        TRY(coder.CodeNumber(modified_from_preset, k_added));
+        if (coder.IsReading()) state.extras.modified_from_preset = modified_from_preset != 0;
     }
 
     // =======================================================================================================
