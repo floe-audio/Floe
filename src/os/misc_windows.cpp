@@ -134,7 +134,7 @@ void GlobalFree(Memory allocation) {
 void GlobalFreeNoSize(void* ptr) { GlobalFree({ptr, 0}); }
 
 void* AllocatePages(usize bytes) {
-    auto p = VirtualAlloc(nullptr, (DWORD)bytes, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    auto p = VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     TracyAlloc(p, bytes);
     return p;
 }
