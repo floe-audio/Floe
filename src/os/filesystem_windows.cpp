@@ -1115,6 +1115,11 @@ struct WindowsWatchedDirectory {
 
 static void UnwatchDirectory(WindowsWatchedDirectory* windows_dir) {
     if (!windows_dir) return;
+    // The kernel may still write into the buffer and OVERLAPPED until a pending read is fully cancelled.
+    if (CancelIoEx(windows_dir->handle, &windows_dir->overlapped)) {
+        DWORD bytes_transferred {};
+        GetOverlappedResult(windows_dir->handle, &windows_dir->overlapped, &bytes_transferred, TRUE);
+    }
     CloseHandle(windows_dir->overlapped.hEvent);
     CloseHandle(windows_dir->handle);
     PageAllocator::Instance().Delete(windows_dir);
@@ -1351,7 +1356,9 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
         } else {
             // For WAIT_IO_COMPLETION, WAIT_ABANDONED, WAIT_TIMEOUT, or any other result just continue to the
             // next directory without processing changes; we'll catch any pending changes in the next poll. We
-            // have seen WAIT_IO_COMPLETION in the wild.
+            // have seen WAIT_IO_COMPLETION in the wild. The read is still pending so we mustn't issue another
+            // one using the same buffer and OVERLAPPED.
+            continue;
         }
 
         auto const succeeded = ReadDirectoryChangesW(windows_dir.handle,
