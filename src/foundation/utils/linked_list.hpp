@@ -127,6 +127,7 @@ PUBLIC void SinglyLinkedListInsertInMemoryOrder(NodeType*& head, NodeType* new_n
     }
 
     // all nodes are less than new_node, previous is the last node
+    new_node->next = nullptr;
     previous->next = new_node;
 }
 

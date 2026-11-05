@@ -96,6 +96,20 @@ TEST_CASE(TestLinkedList) {
     remove_if([](int i) { return i == 2; });
     CHECK(count_list() == 0);
 
+    SUBCASE("insert in memory order") {
+        Node nodes[3];
+        for (auto& node : nodes)
+            node.next = (Node*)(uintptr)0xdeadbeef;
+        Node* head = nullptr;
+        SinglyLinkedListInsertInMemoryOrder(head, &nodes[1]);
+        SinglyLinkedListInsertInMemoryOrder(head, &nodes[0]);
+        SinglyLinkedListInsertInMemoryOrder(head, &nodes[2]);
+        CHECK(head == &nodes[0]);
+        CHECK(nodes[0].next == &nodes[1]);
+        CHECK(nodes[1].next == &nodes[2]);
+        CHECK(nodes[2].next == nullptr);
+    }
+
     return k_success;
 }
 

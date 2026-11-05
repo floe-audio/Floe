@@ -37,6 +37,14 @@ TEST_CASE(TestIntToString) {
     CHECK(to_string(0xfedcba, {.base = fmt::IntToStringOptions::Base::Hexadecimal, .capitalize = true}) ==
           "FEDCBA");
     CHECK(to_string(-255, {.base = fmt::IntToStringOptions::Base::Hexadecimal}) == "-ff");
+
+    CHECK_EQ(String(fmt::IntToString((s8)-128)), "-128"_s);
+    CHECK_EQ(String(fmt::IntToString((s32)(-2147483647 - 1))), "-2147483648"_s);
+    CHECK_EQ(String(fmt::IntToString((s64)(-9223372036854775807LL - 1))), "-9223372036854775808"_s);
+    CHECK_EQ(String(fmt::IntToString((s64)(-9223372036854775807LL - 1),
+                                     {.base = fmt::IntToStringOptions::Base::Hexadecimal})),
+             "-8000000000000000"_s);
+    CHECK_EQ(String(fmt::IntToString(~(u64)0)), "18446744073709551615"_s);
     return k_success;
 }
 

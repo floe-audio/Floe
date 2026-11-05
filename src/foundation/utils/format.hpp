@@ -106,7 +106,9 @@ PUBLIC constexpr usize IntToString(IntType num, char* buffer, IntToStringOptions
         return 1;
     }
 
-    IntType base {};
+    using UnsignedType = MakeUnsigned<IntType>;
+
+    UnsignedType base {};
     switch (options.base) {
         case IntToStringOptions::Base::Decimal: base = 10; break;
         case IntToStringOptions::Base::Hexadecimal: base = 16; break;
@@ -114,20 +116,17 @@ PUBLIC constexpr usize IntToString(IntType num, char* buffer, IntToStringOptions
     }
 
     bool const is_negative = SignedInt<IntType> && num < 0;
-    if (is_negative) num = -num; // Make the number positive for conversion
+    // Negating in the unsigned type so that the minimum value doesn't overflow.
+    auto magnitude = is_negative ? (UnsignedType)(UnsignedType(0) - (UnsignedType)num) : (UnsignedType)num;
 
     // Start with the end of the buffer
     char* ptr = buffer;
 
-    if (num == 0) {
-        *ptr++ = '0';
-    } else {
-        do {
-            *ptr++ = (options.capitalize ? "0123456789ABCDEFGHIJKLMNPQRSTVWX"
-                                         : "0123456789abcdefghijklmnpqrstvwx")[num % base];
-            num /= base;
-        } while (num != 0);
-    }
+    do {
+        *ptr++ = (options.capitalize ? "0123456789ABCDEFGHIJKLMNPQRSTVWX"
+                                     : "0123456789abcdefghijklmnpqrstvwx")[magnitude % base];
+        magnitude /= base;
+    } while (magnitude != 0);
 
     if constexpr (SignedInt<IntType>) {
         if (is_negative)
