@@ -35,10 +35,18 @@ static ErrorCodeOr<ssize> CopyFile(char const* source, char const* destination) 
     off_t bytes_copied = 0;
     struct stat fileinfo = {};
     if (fstat(input, &fileinfo) != 0) return FilesystemErrnoErrorCode(errno);
-    ssize result = sendfile(output, input, &bytes_copied, CheckedCast<usize>(fileinfo.st_size));
-    if (result == -1) return FilesystemErrnoErrorCode(errno);
+    // sendfile transfers at most ~2 GiB per call and may return short counts
+    while (bytes_copied < fileinfo.st_size) {
+        auto const result =
+            sendfile(output, input, &bytes_copied, CheckedCast<usize>(fileinfo.st_size - bytes_copied));
+        if (result == -1) {
+            if (errno == EINTR) continue;
+            return FilesystemErrnoErrorCode(errno);
+        }
+        if (result == 0) break;
+    }
 
-    return result;
+    return (ssize)bytes_copied;
 }
 
 ErrorCodeOr<void> CopyFile(String from, String to, ExistingDestinationHandling existing) {
