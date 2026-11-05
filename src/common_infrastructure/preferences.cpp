@@ -289,8 +289,6 @@ PreferencesTable ParseLegacyPreferencesFile(String file_data, ArenaAllocator& ar
                             return true;
                         }
                     }
-                } else {
-                    PanicIfReached();
                 }
             }
 
@@ -377,7 +375,7 @@ ErrorCodeOr<ReadResult> ReadEntirePreferencesFile(String path, ArenaAllocator& a
     TRY(file.Lock({.type = FileLockOptions::Type::Shared}));
     DEFER { auto _ = file.Unlock(); };
 
-    if (TRY(file.FileSize()) > k_max_file_size) return ErrorCode {CommonError::InvalidFileFormat};
+    if (TRY(file.FileSize()) >= k_max_file_size) return ErrorCode {CommonError::InvalidFileFormat};
 
     auto const file_last_modified = TRY(file.LastModifiedTimeNsSinceEpoch());
     auto const file_data = TRY(file.ReadWholeFile(arena));
