@@ -749,6 +749,8 @@ static bool ConsumeResourceRequests(PendingResources& pending_resources,
     return any_requests;
 }
 
+// Must be called with server.channels locked: a channel's error_notifications belong to its owner, which may
+// be destroyed as soon as the channel is closed.
 static bool UpdatePendingResources(PendingResources& pending_resources,
                                    Server& server,
                                    bool libraries_are_still_loading) {
@@ -761,6 +763,39 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
         .num_thread_pool_jobs = pending_resources.thread_pool_jobs,
         .completed_signaller = server.work_signaller,
     };
+
+    auto const is_desired_by_any_pending_resource = [&](ListedInstrument const* inst) {
+        for (auto& other_pending_resource : pending_resources.list)
+            for (auto other_desired : other_pending_resource.request.async_comms_channel.desired_inst)
+                if (other_desired == inst) return true;
+        return false;
+    };
+
+    // Cancel everything for closed channels
+    for (auto& pending_resource : pending_resources.list) {
+        auto& channel = pending_resource.request.async_comms_channel;
+        if (channel.used.Load(LoadMemoryOrder::Acquire)) continue;
+        for (auto& desired : channel.desired_inst)
+            desired = nullptr;
+    }
+    for (auto& pending_resource : pending_resources.list) {
+        if (pending_resource.request.async_comms_channel.used.Load(LoadMemoryOrder::Acquire)) continue;
+        switch (pending_resource.state.tag) {
+            case PendingResource::State::AwaitingLibrary: break;
+            case PendingResource::State::AwaitingAudio: {
+                if (auto i = pending_resource.state.Get<PendingResource::ListedPointer>()
+                                 .TryGet<ListedInstrument*>()) {
+                    if (!is_desired_by_any_pending_resource(*i))
+                        CancelLoadingAudioForInstrumentIfPossible(*i, pending_resource.debug_id);
+                }
+                break;
+            }
+            case PendingResource::State::Cancelled:
+            case PendingResource::State::Failed:
+            case PendingResource::State::CompletedSuccessfully: continue;
+        }
+        pending_resource.state = PendingResource::State::Cancelled;
+    }
 
     // Fill in library
     for (auto& pending_resource : pending_resources.list) {
@@ -971,21 +1006,7 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
             }
         } else {
             // If it's not desired by any others it can be cancelled
-            bool const is_desired_by_another = ({
-                bool desired = false;
-                for (auto& other_pending_resource : pending_resources.list) {
-                    for (auto other_desired :
-                         other_pending_resource.request.async_comms_channel.desired_inst) {
-                        if (other_desired == i) {
-                            desired = true;
-                            break;
-                        }
-                    }
-                    if (desired) break;
-                }
-                desired;
-            });
-            if (!is_desired_by_another)
+            if (!is_desired_by_any_pending_resource(i))
                 CancelLoadingAudioForInstrumentIfPossible(i, pending_resource.debug_id);
 
             pending_resource.state = PendingResource::State::Cancelled;
@@ -1077,32 +1098,30 @@ static bool UpdatePendingResources(PendingResources& pending_resources,
                 }),
             };
 
-            server.channels.Use([&](auto&) {
-                if (pending_resource.request.async_comms_channel.used.Load(LoadMemoryOrder::Acquire)) {
-                    // We always add results with a ref count of 1, we do that manually rather than call
-                    // Retain() because here we accept that ref count might be 0 here: something that is
-                    // disallowed in Retain().
-                    if (auto ref_count = ({
-                            Atomic<u32>* rc = nullptr;
-                            if (auto resource = pending_resource.state.TryGet<Resource>()) {
-                                switch (resource->tag) {
-                                    case LoadRequestType::Instrument:
-                                        rc = resource->Get<ResourcePointer<sample_lib::LoadedInstrument>>()
-                                                 .ref_count;
-                                        break;
-                                    case LoadRequestType::Ir:
-                                        rc = resource->Get<ResourcePointer<sample_lib::LoadedIr>>().ref_count;
-                                        break;
-                                }
+            if (pending_resource.request.async_comms_channel.used.Load(LoadMemoryOrder::Acquire)) {
+                // We always add results with a ref count of 1, we do that manually rather than call
+                // Retain() because here we accept that ref count might be 0 here: something that is
+                // disallowed in Retain().
+                if (auto ref_count = ({
+                        Atomic<u32>* rc = nullptr;
+                        if (auto resource = pending_resource.state.TryGet<Resource>()) {
+                            switch (resource->tag) {
+                                case LoadRequestType::Instrument:
+                                    rc = resource->Get<ResourcePointer<sample_lib::LoadedInstrument>>()
+                                             .ref_count;
+                                    break;
+                                case LoadRequestType::Ir:
+                                    rc = resource->Get<ResourcePointer<sample_lib::LoadedIr>>().ref_count;
+                                    break;
                             }
-                            rc;
-                        })) {
-                        ref_count->FetchAdd(1, RmwMemoryOrder::Relaxed);
-                    }
-                    pending_resource.request.async_comms_channel.results.Push(result);
-                    pending_resource.request.async_comms_channel.result_added_callback();
+                        }
+                        rc;
+                    })) {
+                    ref_count->FetchAdd(1, RmwMemoryOrder::Relaxed);
                 }
-            });
+                pending_resource.request.async_comms_channel.results.Push(result);
+                pending_resource.request.async_comms_channel.result_added_callback();
+            }
             return true;
         },
         [](PendingResource*) {
@@ -1139,7 +1158,9 @@ static void RemoveUnreferencedObjects(Server& server) {
     ZoneScoped;
     ASSERT_EQ(CurrentThreadId(), server.server_thread_id);
 
-    server.channels.Use([](auto& channels) {
+    server.channels.Use([&](auto& channels) {
+        // A queued request can still reference a closed channel, and freed nodes are reused.
+        if (!server.request_queue.Empty()) return;
         channels.RemoveIf([](AsyncCommsChannel const& h) { return !h.used.Load(LoadMemoryOrder::Acquire); });
     });
 
@@ -1215,8 +1236,9 @@ static void ServerThreadProc(Server& server) {
 
             auto const libraries_are_still_loading = UpdateLibraryJobs(server, scratch_arena, watcher);
 
-            auto const resources_are_still_loading =
-                UpdatePendingResources(pending_resources, server, libraries_are_still_loading);
+            auto const resources_are_still_loading = server.channels.Use([&](auto&) {
+                return UpdatePendingResources(pending_resources, server, libraries_are_still_loading);
+            });
 
             ServerThreadUpdateMetrics(server);
 
@@ -1237,6 +1259,8 @@ static void ServerThreadProc(Server& server) {
 
     // It's necessary to do this at the end of this function because it is not guaranteed to be called in the
     // loop; the 'end' boolean can be changed at a point where the loop ends before calling this.
+    while (server.request_queue.TryPop()) {
+    }
     RemoveUnreferencedObjects(server);
 
     server.libraries.RemoveAll();
