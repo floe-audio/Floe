@@ -1881,6 +1881,7 @@ ErrorCodeOr<void> CodeState(StateSnapshot& state, CodeStateArguments const& args
         u8 num_macros {};
         if (coder.IsWriting()) num_macros = k_num_macros;
         TRY(coder.CodeNumber(num_macros, k_added));
+        if (num_macros > k_num_macros) return ErrorCode(CommonError::InvalidFileFormat);
 
         for (auto const macro_index : Range(num_macros)) {
             TRY(coder.CodeDynArray(state.macro_names[macro_index], k_added));
