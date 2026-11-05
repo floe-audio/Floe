@@ -243,7 +243,7 @@ ErrorCodeOr<File> OpenFile(String filename, FileMode mode) {
             },
         };
 
-        if (auto r = SetEntriesInAclW(1, &ea, nullptr, &acl) != ERROR_SUCCESS)
+        if (auto const r = SetEntriesInAclW(1, &ea, nullptr, &acl); r != ERROR_SUCCESS)
             return Win32ErrorCode(r, "SetEntriesInAcl");
 
         sd = (PSECURITY_DESCRIPTOR)LocalAlloc(LPTR, SECURITY_DESCRIPTOR_MIN_LENGTH);
@@ -378,7 +378,7 @@ static ErrorCodeOr<DynamicArray<wchar_t>> Win32GetRunningProgramName(Allocator& 
                                            (DWORD)result.Capacity());
         if (path_len == 0)
             return FilesystemWin32ErrorCode(GetLastError(), "GetModuleFileNameW");
-        else if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
+        else if (path_len == (DWORD)result.Capacity())
             return false;
         dyn::Resize(result, (usize)path_len);
         return true;
@@ -1017,7 +1017,7 @@ static Entry MakeEntry(WIN32_FIND_DATAW const& data, ArenaAllocator& arena) {
     return {
         .subpath = filename,
         .type = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? FileType::Directory : FileType::File,
-        .file_size = (data.nFileSizeHigh * (MAXDWORD + 1)) + data.nFileSizeLow,
+        .file_size = ((u64)data.nFileSizeHigh << 32) | data.nFileSizeLow,
     };
 }
 
