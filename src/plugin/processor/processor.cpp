@@ -1880,6 +1880,8 @@ static void OnMainThread(AudioProcessor& processor) {
             }
         }
         if (all_layers_have_completed_swap) {
+            // The voice pool's queued items can reference these instruments.
+            OnMainThread(processor.voice_pool);
             for (auto& i : processor.lifetime_extended_insts)
                 i.Release();
             dyn::Clear(processor.lifetime_extended_insts);
