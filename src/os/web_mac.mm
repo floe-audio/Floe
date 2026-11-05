@@ -35,6 +35,11 @@ struct CompletionSync {
     bool completed = false;
 };
 
+static NSInteger HttpStatusCode(NSURLResponse* response) {
+    if (![response isKindOfClass:[NSHTTPURLResponse class]]) return 0;
+    return ((NSHTTPURLResponse*)response).statusCode;
+}
+
 ErrorCodeOr<void> HttpsGet(String url, Writer writer, RequestOptions options) {
     NSURL* nsurl = [NSURL URLWithString:StringToNSString(url)];
     NSMutableURLRequest* request = [NSMutableURLRequest requestWithURL:nsurl];
@@ -59,10 +64,15 @@ ErrorCodeOr<void> HttpsGet(String url, Writer writer, RequestOptions options) {
     @try {
         NSURLSessionDataTask* task =
             [session dataTaskWithRequest:request
-                       completionHandler:^(NSData* data, NSURLResponse*, NSError* error) {
+                       completionHandler:^(NSData* data, NSURLResponse* response, NSError* error) {
                          if (!error) {
                              auto const o = writer.WriteBytes({(u8 const*)data.bytes, data.length});
-                             if (o.HasError()) result = o.Error();
+                             if (o.HasError())
+                                 result = o.Error();
+                             else if (auto const status = HttpStatusCode(response); status != 200) {
+                                 LogDebug({}, "Reponse is non-200: {}", status);
+                                 result = ErrorCode {WebError::Non200Response};
+                             }
                          } else {
                              LogDebug({}, "Error: {}", error.localizedDescription.UTF8String);
                              result = ErrorCode {WebError::NetworkError};
@@ -105,20 +115,26 @@ HttpsPost(String url, String body, Optional<Writer> response_writer, RequestOpti
     __block CompletionSync completion_sync;
 
     @try {
-        NSURLSessionDataTask* task =
-            [session dataTaskWithRequest:request
-                       completionHandler:^(NSData* data, NSURLResponse*, NSError* error) {
-                         if (error) {
-                             LogDebug({}, "Error: {}", error.localizedDescription.UTF8String);
-                             result = ErrorCode {WebError::NetworkError};
-                         } else if (response_writer.HasValue() && data) {
-                             auto const o = response_writer->WriteBytes({(u8 const*)data.bytes, data.length});
-                             if (o.HasError()) result = o.Error();
-                         } else {
-                             result = k_success;
-                         }
-                         completion_sync.Complete();
-                       }];
+        NSURLSessionDataTask* task = [session
+            dataTaskWithRequest:request
+              completionHandler:^(NSData* data, NSURLResponse* response, NSError* error) {
+                if (error) {
+                    LogDebug({}, "Error: {}", error.localizedDescription.UTF8String);
+                    result = ErrorCode {WebError::NetworkError};
+                } else {
+                    if (response_writer.HasValue() && data) {
+                        auto const o = response_writer->WriteBytes({(u8 const*)data.bytes, data.length});
+                        if (o.HasError()) result = o.Error();
+                    }
+                    if (!result.HasError()) {
+                        if (auto const status = HttpStatusCode(response); status != 200) {
+                            LogDebug({}, "Reponse is non-200: {}", status);
+                            result = ErrorCode {WebError::Non200Response};
+                        }
+                    }
+                }
+                completion_sync.Complete();
+              }];
         [task resume];
         completion_sync.WaitForCompletion();
     } @catch (NSException* e) {

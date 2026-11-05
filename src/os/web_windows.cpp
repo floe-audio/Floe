@@ -172,6 +172,17 @@ static ErrorCodeOr<void> HttpRequestImpl(String url,
 
     if (!WinHttpReceiveResponse(request, nullptr)) return LogAndReturn(ErrorCode {WebError::NetworkError});
 
+    DWORD status_code = 0;
+    DWORD status_code_size = sizeof(status_code);
+    if (!WinHttpQueryHeaders(request,
+                             WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                             WINHTTP_HEADER_NAME_BY_INDEX,
+                             &status_code,
+                             &status_code_size,
+                             WINHTTP_NO_HEADER_INDEX)) {
+        return LogAndReturn(ErrorCode {WebError::ApiError});
+    }
+
     // Process response if writer is provided
     if (response_writer.HasValue()) {
         DWORD bytes_available = 0;
@@ -188,6 +199,11 @@ static ErrorCodeOr<void> HttpRequestImpl(String url,
                 return LogAndReturn(ErrorCode {WebError::NetworkError});
             }
         } while (bytes_available > 0);
+    }
+
+    if (status_code != 200) {
+        LogDebug({}, "Reponse is non-200: {}", status_code);
+        return ErrorCode {WebError::Non200Response};
     }
 
     return k_success;
