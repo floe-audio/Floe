@@ -133,7 +133,8 @@ struct StillwellMajorTom {
         auto overdb = 2.08136898f * Log(det / cthreshv) * k_log2db;
         if (overdb > maxover) {
             maxover = overdb;
-            attime = k_attack_times[(usize)Max(0.0f, Floor(Fabs(overdb)))]; // attack time per formula
+            attime = k_attack_times[(usize)Min(Floor(Fabs(overdb)),
+                                               (f32)(k_attack_times.size - 1))]; // attack time per formula
             atcoef = Exp(-1 / (attime * srate));
             reltime = overdb / 125; // release at constant 125 dB/sec.
             relcoef = Exp(-1 / (reltime * srate));
