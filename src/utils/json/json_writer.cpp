@@ -93,6 +93,11 @@ TEST_CASE(TestJsonWriter) {
         tester.log.Debug("{}", output);
         CHECK_EQ(output.Items(), "[\"H:/Floe PresetsÉe\"]"_s);
     }
+
+    SUBCASE("escapes after multi-byte utf8") {
+        CHECK_EQ(EncodeString("é\"€\\é\n", tester.scratch_arena), "é\\\"€\\\\é\\n"_s);
+        CHECK_EQ(EncodeString("\x01\x1f", tester.scratch_arena), "\\u0001\\u001f"_s);
+    }
     return k_success;
 }
 

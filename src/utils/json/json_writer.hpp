@@ -22,44 +22,27 @@ struct WriteContext {
     int current_indent {0};
 };
 
-// we assume utf-8
+// We assume UTF-8. Bytes of a multi-byte sequence are all >= 0x80 so they can be copied verbatim; only ASCII
+// needs escaping.
 PUBLIC ErrorCodeOr<void> EncodeString(String str, Writer& out) {
-    for (usize i = 0; i < str.size;) {
-        auto const c = str[i];
-
-        usize utf8_size;
-        if (0 == ((s32)0xffffff80 & c))
-            utf8_size = 1;
-        else if (0 == ((s32)0xfffff800 & c))
-            utf8_size = 2;
-        else if (0 == ((s32)0xffff0000 & c))
-            utf8_size = 3;
-        else
-            utf8_size = 4;
-        DEFER { i += utf8_size; };
-
-        if (utf8_size == 1) {
-            switch (c) {
-                case '"': TRY(out.WriteChars("\\\"")); break;
-                case '\\': TRY(out.WriteChars("\\\\")); break;
-                case '\b': TRY(out.WriteChars("\\b")); break;
-                case '\f': TRY(out.WriteChars("\\f")); break;
-                case '\n': TRY(out.WriteChars("\\n")); break;
-                case '\r': TRY(out.WriteChars("\\r")); break;
-                case '\t': TRY(out.WriteChars("\\t")); break;
-                default: {
-                    if (c < 0x20) {
-                        TRY(out.WriteChars("\\u00"));
-                        auto hex =
-                            fmt::IntToString((u8)c, {.base = fmt::IntToStringOptions::Base::Hexadecimal});
-                        TRY(out.WriteChars(hex));
-                    } else {
-                        TRY(out.WriteChar(c));
-                    }
+    for (auto const c : str) {
+        switch (c) {
+            case '"': TRY(out.WriteChars("\\\"")); break;
+            case '\\': TRY(out.WriteChars("\\\\")); break;
+            case '\b': TRY(out.WriteChars("\\b")); break;
+            case '\f': TRY(out.WriteChars("\\f")); break;
+            case '\n': TRY(out.WriteChars("\\n")); break;
+            case '\r': TRY(out.WriteChars("\\r")); break;
+            case '\t': TRY(out.WriteChars("\\t")); break;
+            default: {
+                if ((u8)c < 0x20) {
+                    TRY(out.WriteChars("\\u00"));
+                    TRY(out.WriteChar("0123456789abcdef"[(u8)c >> 4]));
+                    TRY(out.WriteChar("0123456789abcdef"[(u8)c & 0xf]));
+                } else {
+                    TRY(out.WriteChar(c));
                 }
             }
-        } else {
-            TRY(out.WriteChars(str.SubSpan(i, utf8_size)));
         }
     }
 
