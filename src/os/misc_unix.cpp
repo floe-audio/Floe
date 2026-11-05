@@ -94,8 +94,8 @@ void TryShrinkPages(void* ptr, usize old_size, usize new_size) {
 
     auto const page_size = CachedSystemStats().page_size;
     auto const current_num_pages = old_size / page_size;
-    auto const new_num_pages = (new_size == 0) ? 0 : ((new_size / page_size) + 1);
-    if (current_num_pages != new_num_pages) {
+    auto const new_num_pages = AlignForward(new_size, page_size) / page_size;
+    if (new_num_pages < current_num_pages) {
         auto const num_pages = current_num_pages - new_num_pages;
         Span<u8> const unused_pages {(u8*)ptr + (new_num_pages * page_size), page_size * num_pages};
         ASSERT(ContainsPointer(unused_pages, unused_pages.data));
