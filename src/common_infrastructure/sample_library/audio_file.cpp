@@ -79,6 +79,7 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
             // Seek callback
             if (!user_data) return FLAC__STREAM_DECODER_SEEK_STATUS_ERROR;
             auto& context = *((Context*)user_data);
+            if (absolute_byte_offset > context.reader.size) return FLAC__STREAM_DECODER_SEEK_STATUS_ERROR;
             context.reader.pos = (usize)absolute_byte_offset;
             return FLAC__STREAM_DECODER_SEEK_STATUS_OK;
         },
@@ -262,16 +263,16 @@ static ErrorCodeOr<AudioData> DecodeWav(Reader& reader, Allocator& allocator) {
         },
         [](void* user_data, int offset, drwav_seek_origin origin) -> drwav_bool32 {
             auto& context = *(Context*)user_data;
-            switch (origin) {
-                case drwav_seek_origin_start: {
-                    context.reader.pos = (usize)offset;
-                    break;
+            auto const new_pos = ({
+                s64 pos {};
+                switch (origin) {
+                    case drwav_seek_origin_start: pos = offset; break;
+                    case drwav_seek_origin_current: pos = (s64)context.reader.pos + offset; break;
                 }
-                case drwav_seek_origin_current: {
-                    context.reader.pos = (usize)((s64)context.reader.pos + offset);
-                    break;
-                }
-            }
+                pos;
+            });
+            if (new_pos < 0 || (u64)new_pos > context.reader.size) return DRWAV_FALSE;
+            context.reader.pos = (usize)new_pos;
             return DRWAV_TRUE;
         },
         &context,
