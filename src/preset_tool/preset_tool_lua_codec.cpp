@@ -875,14 +875,21 @@ void RegisterParamLuaFunctions(lua_State* lua) {
     lua_register(lua, "macro_destination_value", LuaMacroDestinationValue);
 }
 
+String LuaErrorMessage(lua_State* lua) {
+    if (lua_type(lua, -1) != LUA_TSTRING) return "(non-string error value)"_s;
+    size_t size;
+    auto const str = lua_tolstring(lua, -1, &size);
+    return {str, size};
+}
+
 ErrorCodeOr<void> RegisterJsonGlobal(lua_State* lua) {
     auto const data = EmbeddedJsonLua();
     if (luaL_loadbuffer(lua, (char const*)data.data, data.size, "json.lua") != LUA_OK) {
-        StdPrintF(StdStream::Err, "Error: failed to load json.lua: {}\n", lua_tostring(lua, -1));
+        StdPrintF(StdStream::Err, "Error: failed to load json.lua: {}\n", LuaErrorMessage(lua));
         return ErrorCode {CommonError::InvalidFileFormat};
     }
     if (lua_pcall(lua, 0, 1, 0) != LUA_OK) {
-        StdPrintF(StdStream::Err, "Error: failed to run json.lua: {}\n", lua_tostring(lua, -1));
+        StdPrintF(StdStream::Err, "Error: failed to run json.lua: {}\n", LuaErrorMessage(lua));
         return ErrorCode {CommonError::InvalidFileFormat};
     }
     lua_setglobal(lua, "json");
@@ -1055,7 +1062,7 @@ RoundTrip(tests::Tester& tester, StateSnapshot const& original, RoundTripVia via
             constexpr auto k_script = "preset = json.decode(json.encode(preset))"_s;
             if (luaL_loadbuffer(lua, k_script.data, k_script.size, "json-round-trip") != LUA_OK ||
                 lua_pcall(lua, 0, 0, 0) != LUA_OK) {
-                tester.log.Error("json round-trip failed: {}", lua_tostring(lua, -1));
+                tester.log.Error("json round-trip failed: {}", LuaErrorMessage(lua));
                 return ErrorCode {CommonError::InvalidFileFormat};
             }
             break;
@@ -1260,7 +1267,7 @@ static Optional<f64> EvalLuaNumber(tests::Tester& tester, lua_State* lua, char c
     dyn::AppendSpan(source, FromNullTerminated(expression));
     if (luaL_loadbuffer(lua, source.data, source.size, "test") != LUA_OK ||
         lua_pcall(lua, 0, 1, 0) != LUA_OK) {
-        tester.log.Debug("{}: {}", expression, lua_tostring(lua, -1));
+        tester.log.Debug("{}: {}", expression, LuaErrorMessage(lua));
         lua_pop(lua, 1);
         return k_nullopt;
     }

@@ -291,12 +291,12 @@ static ErrorCodeOr<void> ProcessPreset(ArenaAllocator& arena, ProcessPresetOptio
                                        opts.script_source.size,
                                        NullTerminated(opts.script_name, arena));
         r != LUA_OK) {
-        StdPrintF(StdStream::Err, "Error: failed to load script: {}\n", lua_tostring(lua, -1));
+        StdPrintF(StdStream::Err, "Error: failed to load script: {}\n", LuaErrorMessage(lua));
         return ErrorCode {CommonError::InvalidFileFormat};
     }
 
     if (auto const r = lua_pcall(lua, 0, LUA_MULTRET, 0); r != LUA_OK) {
-        StdPrintF(StdStream::Err, "Error: script execution failed: {}\n", lua_tostring(lua, -1));
+        StdPrintF(StdStream::Err, "Error: script execution failed: {}\n", LuaErrorMessage(lua));
         return ErrorCode {CommonError::InvalidFileFormat};
     }
 
@@ -619,7 +619,7 @@ static ErrorCodeOr<int> Main(ArgsCstr args) {
             lua_remove(lua, -2);
             lua_pushlstring(lua, json_text.data, json_text.size);
             if (lua_pcall(lua, 1, 1, 0) != LUA_OK) {
-                StdPrintF(StdStream::Err, "Error: failed to decode JSON: {}\n", lua_tostring(lua, -1));
+                StdPrintF(StdStream::Err, "Error: failed to decode JSON: {}\n", LuaErrorMessage(lua));
                 return ErrorCode {CommonError::InvalidFileFormat};
             }
             if (!lua_istable(lua, -1)) {

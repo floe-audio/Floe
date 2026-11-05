@@ -26,6 +26,9 @@ void RegisterParamLuaFunctions(lua_State* lua);
 // --json print serializer) can call json.encode / json.decode. Requires the Lua standard libs.
 ErrorCodeOr<void> RegisterJsonGlobal(lua_State* lua);
 
+// The error value on top of the stack after a failed load/pcall. Scripts can raise non-string errors.
+String LuaErrorMessage(lua_State* lua);
+
 // Append a human-readable description of every field in the 'preset' Lua table. Each handler owns
 // its own help text, so read, write, and shape documentation live together. Text only (no JSON).
 void AppendPresetLuaTableShape(DynamicArray<char>& out);
