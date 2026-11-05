@@ -135,6 +135,19 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
                 return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
             }
 
+            if (frame->header.channels != context.channels) {
+                context.error_code = ErrorCode(AudioFileError::FileHasInvalidData,
+                                               "FLAC frame channels differ from STREAMINFO");
+                return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
+            }
+
+            if ((u64)start_pos + ((u64)frame->header.blocksize * frame->header.channels) >
+                context.interleaved_samples.size) {
+                context.error_code = ErrorCode(AudioFileError::FileHasInvalidData,
+                                               "FLAC has more samples than STREAMINFO states");
+                return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
+            }
+
             u64 bits_per_sample = frame->header.bits_per_sample;
             if (!bits_per_sample) bits_per_sample = context.bits_per_sample;
             if (!bits_per_sample) return FLAC__STREAM_DECODER_WRITE_STATUS_ABORT;
@@ -163,6 +176,12 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
 
             if (info.channels == 0 || info.channels > 2) {
                 context.error_code = AudioFileError::NotMonoOrStereo;
+                return;
+            }
+
+            if (info.total_samples == 0 || info.total_samples > LargestRepresentableValue<u32>()) {
+                context.error_code = ErrorCode(AudioFileError::FileHasInvalidData,
+                                               "FLAC STREAMINFO has unsupported total samples");
                 return;
             }
 
@@ -201,7 +220,7 @@ static ErrorCodeOr<AudioData> DecodeFlac(Reader& reader, Allocator& allocator) {
 
     auto const process_success = FLAC__stream_decoder_process_until_end_of_stream(decoder);
 
-    if (!process_success || context.flac_error) {
+    if (!process_success || context.flac_error || context.error_code) {
         if (context.interleaved_samples.size) allocator.Free(context.interleaved_samples.ToByteSpan());
         if (context.error_code) return *context.error_code;
         if (context.flac_error)
@@ -361,6 +380,25 @@ TEST_CASE(TestAudioFormats) {
         auto reader = TRY(Reader::FromFile(p));
         auto outcome = DecodeAudioFile(reader, p, a);
         CHECK(outcome.HasError());
+    }
+
+    SUBCASE("FLAC with wrong STREAMINFO total samples") {
+        auto const p = path::Join(a, Array {dir, "16bit-mono.flac"_s});
+        auto const file_data = TRY(ReadEntireFile(p, a));
+
+        // STREAMINFO's 36-bit total samples field occupies the low 4 bits of byte 21 and bytes 22-25.
+        for (auto const total_samples : Array {0u, 1u}) {
+            auto data = a.Clone(file_data);
+            data[21] = (char)(data[21] & 0xF0);
+            data[22] = (char)((total_samples >> 24) & 0xFF);
+            data[23] = (char)((total_samples >> 16) & 0xFF);
+            data[24] = (char)((total_samples >> 8) & 0xFF);
+            data[25] = (char)(total_samples & 0xFF);
+
+            auto reader = Reader::FromMemory(data);
+            auto outcome = DecodeAudioFile(reader, p, a);
+            CHECK(outcome.HasError());
+        }
     }
 
     return k_success;
