@@ -1136,6 +1136,84 @@ static bool IssueReadDirectoryChanges(WindowsWatchedDirectory& windows_dir, bool
                                  nullptr);
 }
 
+static void AppendChangesFromNotifyBuffer(Span<u8 const> notify_data,
+                                          DirectoryWatcher::DirectoryChanges& directory_changes,
+                                          ArenaAllocator& result_arena) {
+    auto const* base = notify_data.data;
+    auto const* end = notify_data.end();
+    auto const min_chunk_size = sizeof(FILE_NOTIFY_INFORMATION);
+
+    while (true) {
+        ASSERT(base < end, "invalid data from ReadDirectoryChangesW");
+        ASSERT((usize)(end - base) >= min_chunk_size, "invalid data from ReadDirectoryChangesW");
+
+        DWORD action;
+        DWORD next_entry_offset;
+        Array<wchar_t, 1000> filename_buf;
+        WString filename;
+
+        {
+            // I've found that it's possible to receive
+            // FILE_NOTIFY_INFORMATION.NextEntryOffset values that result in the next event
+            // being misaligned. Reading unaligned memory is not normally a great idea for
+            // performance. And if you have UBSan enabled, it will crash. To work around this,
+            // we copy the given memory into correctly aligned structures. Another option
+            // would be to disable UBSan for this function but I'm not sure of the
+            // consequences of misaligned reads so let's play it safe.
+
+            FILE_NOTIFY_INFORMATION event;
+            __builtin_memcpy_inline(&event, base, sizeof(event));
+
+            ASSERT((base + event.FileNameLength) <= end, "invalid data from ReadDirectoryChangesW");
+            constexpr DWORD k_valid_actions = FILE_ACTION_ADDED | FILE_ACTION_REMOVED | FILE_ACTION_MODIFIED |
+                                              FILE_ACTION_RENAMED_OLD_NAME | FILE_ACTION_RENAMED_NEW_NAME;
+            ASSERT((event.Action & ~k_valid_actions) == 0, "invalid data from ReadDirectoryChangesW");
+            ASSERT(event.FileNameLength % sizeof(wchar_t) == 0, "invalid data from ReadDirectoryChangesW");
+
+            auto const num_wchars = event.FileNameLength / sizeof(wchar_t);
+            ASSERT(num_wchars <= filename_buf.size);
+
+            CopyMemory(filename_buf.data,
+                       base + offsetof(FILE_NOTIFY_INFORMATION, FileName),
+                       event.FileNameLength);
+            action = event.Action;
+            next_entry_offset = event.NextEntryOffset;
+            filename = {filename_buf.data, num_wchars};
+        }
+
+        DirectoryWatcher::ChangeTypeFlags changes {};
+        switch (action) {
+            case FILE_ACTION_ADDED: changes |= DirectoryWatcher::ChangeType::Added; break;
+            case FILE_ACTION_REMOVED: changes |= DirectoryWatcher::ChangeType::Deleted; break;
+            case FILE_ACTION_MODIFIED: changes |= DirectoryWatcher::ChangeType::Modified; break;
+            case FILE_ACTION_RENAMED_OLD_NAME: changes |= DirectoryWatcher::ChangeType::RenamedOldName; break;
+            case FILE_ACTION_RENAMED_NEW_NAME: changes |= DirectoryWatcher::ChangeType::RenamedNewName; break;
+        }
+        if (changes) {
+            auto const narrowed = Narrow(result_arena, filename);
+            if (narrowed.HasValue()) {
+                ASSERT(IsValidUtf8(narrowed.Value()));
+                if constexpr (k_debug_log_watcher)
+                    LogDebug(ModuleName::Filesystem,
+                             "ReadDirectoryChanges: {} {}",
+                             narrowed.Value(),
+                             DirectoryWatcher::ChangeType::ToString(changes));
+                directory_changes.Add(
+                    {
+                        .subpath = narrowed.Value(),
+                        .file_type = k_nullopt,
+                        .changes = changes,
+                    },
+                    result_arena);
+            }
+        }
+
+        if (!next_entry_offset) break; // successfully read all events
+
+        base += next_entry_offset;
+    }
+}
+
 ErrorCodeOr<DirectoryWatcher> CreateDirectoryWatcher(Allocator& a) {
     ZoneScoped;
     DirectoryWatcher result {
@@ -1245,123 +1323,34 @@ PollDirectoryChanges(DirectoryWatcher& watcher, PollDirectoryChangesArgs args) {
 
         auto const wait_result = WaitForSingleObjectEx(windows_dir.overlapped.hEvent, 0, TRUE);
 
-        if (wait_result == WAIT_OBJECT_0) {
-            DWORD bytes_transferred {};
-            if (GetOverlappedResult(windows_dir.handle, &windows_dir.overlapped, &bytes_transferred, FALSE)) {
-                bool error = false;
+        // For WAIT_IO_COMPLETION, WAIT_ABANDONED, WAIT_TIMEOUT, or any other result just continue to the next
+        // directory without processing changes; we'll catch any pending changes in the next poll. We have
+        // seen WAIT_IO_COMPLETION in the wild. The read is still pending so we mustn't issue another one
+        // using the same buffer and OVERLAPPED.
+        if (wait_result != WAIT_OBJECT_0) continue;
 
-                if (bytes_transferred == 0) {
-                    // Even though this is a result from GetOverlappedResult, I believe this is the relevant
-                    // docs: "If the buffer overflows, ReadDirectoryChangesW will still return true, but the
-                    // entire contents of the buffer are discarded and the lpBytesReturned parameter will be
-                    // zero, which indicates that your buffer was too small to hold all of the changes that
-                    // occurred."
-                    error = true;
-                }
-
-                auto const* base = windows_dir.buffer.data;
-                auto const* end = Min<u8 const*>(base + bytes_transferred, windows_dir.buffer.end());
-                auto const min_chunk_size = sizeof(FILE_NOTIFY_INFORMATION);
-
-                while (!error) {
-                    ASSERT(base < end, "invalid data from ReadDirectoryChangesW");
-                    ASSERT((usize)(end - base) >= min_chunk_size, "invalid data from ReadDirectoryChangesW");
-
-                    ASSERT(bytes_transferred >= min_chunk_size);
-
-                    DWORD action;
-                    DWORD next_entry_offset;
-                    Array<wchar_t, 1000> filename_buf;
-                    WString filename;
-
+        DWORD bytes_transferred {};
+        if (GetOverlappedResult(windows_dir.handle, &windows_dir.overlapped, &bytes_transferred, FALSE)) {
+            if (bytes_transferred == 0) {
+                // Even though this is a result from GetOverlappedResult, I believe this is the relevant docs:
+                // "If the buffer overflows, ReadDirectoryChangesW will still return true, but the entire
+                // contents of the buffer are discarded and the lpBytesReturned parameter will be zero, which
+                // indicates that your buffer was too small to hold all of the changes that occurred."
+                dir.directory_changes.Add(
                     {
-                        // I've found that it's possible to receive
-                        // FILE_NOTIFY_INFORMATION.NextEntryOffset values that result in the next event
-                        // being misaligned. Reading unaligned memory is not normally a great idea for
-                        // performance. And if you have UBSan enabled, it will crash. To work around this,
-                        // we copy the given memory into correctly aligned structures. Another option
-                        // would be to disable UBSan for this function but I'm not sure of the
-                        // consequences of misaligned reads so let's play it safe.
-
-                        ASSERT(bytes_transferred != 1);
-                        FILE_NOTIFY_INFORMATION event;
-                        __builtin_memcpy_inline(&event, base, sizeof(event));
-
-                        ASSERT((base + event.FileNameLength) <= end,
-                               "invalid data from ReadDirectoryChangesW");
-                        constexpr DWORD k_valid_actions =
-                            FILE_ACTION_ADDED | FILE_ACTION_REMOVED | FILE_ACTION_MODIFIED |
-                            FILE_ACTION_RENAMED_OLD_NAME | FILE_ACTION_RENAMED_NEW_NAME;
-                        ASSERT((event.Action & ~k_valid_actions) == 0,
-                               "invalid data from ReadDirectoryChangesW");
-                        ASSERT(event.FileNameLength % sizeof(wchar_t) == 0,
-                               "invalid data from ReadDirectoryChangesW");
-
-                        auto const num_wchars = event.FileNameLength / sizeof(wchar_t);
-                        ASSERT(num_wchars <= filename_buf.size);
-
-                        CopyMemory(filename_buf.data,
-                                   base + offsetof(FILE_NOTIFY_INFORMATION, FileName),
-                                   event.FileNameLength);
-                        action = event.Action;
-                        next_entry_offset = event.NextEntryOffset;
-                        filename = {filename_buf.data, num_wchars};
-                    }
-
-                    DirectoryWatcher::ChangeTypeFlags changes {};
-                    switch (action) {
-                        case FILE_ACTION_ADDED: changes |= DirectoryWatcher::ChangeType::Added; break;
-                        case FILE_ACTION_REMOVED: changes |= DirectoryWatcher::ChangeType::Deleted; break;
-                        case FILE_ACTION_MODIFIED: changes |= DirectoryWatcher::ChangeType::Modified; break;
-                        case FILE_ACTION_RENAMED_OLD_NAME:
-                            changes |= DirectoryWatcher::ChangeType::RenamedOldName;
-                            break;
-                        case FILE_ACTION_RENAMED_NEW_NAME:
-                            changes |= DirectoryWatcher::ChangeType::RenamedNewName;
-                            break;
-                    }
-                    if (changes) {
-                        auto const narrowed = Narrow(args.result_arena, filename);
-                        if (narrowed.HasValue()) {
-                            ASSERT(IsValidUtf8(narrowed.Value()));
-                            if constexpr (k_debug_log_watcher)
-                                LogDebug(ModuleName::Filesystem,
-                                         "ReadDirectoryChanges: {} {}",
-                                         narrowed.Value(),
-                                         DirectoryWatcher::ChangeType::ToString(changes));
-                            dir.directory_changes.Add(
-                                {
-                                    .subpath = narrowed.Value(),
-                                    .file_type = k_nullopt,
-                                    .changes = changes,
-                                },
-                                args.result_arena);
-                        }
-                    }
-
-                    if (!next_entry_offset) break; // successfully read all events
-
-                    base += next_entry_offset;
-                }
-
-                if (error) {
-                    dir.directory_changes.Add(
-                        {
-                            .subpath = {},
-                            .file_type = k_nullopt,
-                            .changes = DirectoryWatcher::ChangeType::ManualRescanNeeded,
-                        },
-                        args.result_arena);
-                }
+                        .subpath = {},
+                        .file_type = k_nullopt,
+                        .changes = DirectoryWatcher::ChangeType::ManualRescanNeeded,
+                    },
+                    args.result_arena);
             } else {
-                dir.directory_changes.error = FilesystemWin32ErrorCode(GetLastError());
+                AppendChangesFromNotifyBuffer(
+                    {windows_dir.buffer.data, Min<usize>(bytes_transferred, windows_dir.buffer.size)},
+                    dir.directory_changes,
+                    args.result_arena);
             }
         } else {
-            // For WAIT_IO_COMPLETION, WAIT_ABANDONED, WAIT_TIMEOUT, or any other result just continue to the
-            // next directory without processing changes; we'll catch any pending changes in the next poll. We
-            // have seen WAIT_IO_COMPLETION in the wild. The read is still pending so we mustn't issue another
-            // one using the same buffer and OVERLAPPED.
-            continue;
+            dir.directory_changes.error = FilesystemWin32ErrorCode(GetLastError());
         }
 
         auto const succeeded = ({
