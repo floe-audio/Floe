@@ -261,9 +261,11 @@ void UpdateXfade(Voice& v, f32 knob_pos_01, bool hard_set) {
     if (voice_sample_1 && !voice_sample_2)
         set_xfade_smoother(*voice_sample_1, 1);
     else if (voice_sample_1 && voice_sample_2) {
+        if (voice_sample_2->region->timbre_layering.layer_range->start <
+            voice_sample_1->region->timbre_layering.layer_range->start)
+            Swap(voice_sample_1, voice_sample_2);
         auto const& r1 = *voice_sample_1->region->timbre_layering.layer_range;
         auto const& r2 = *voice_sample_2->region->timbre_layering.layer_range;
-        if (r2.start < r1.start) Swap(voice_sample_1, voice_sample_2);
         auto const overlap_low = r2.start;
         auto const overlap_high = r1.end;
         ASSERT(overlap_high > overlap_low);
@@ -2769,8 +2771,56 @@ TEST_CASE(TestLfoVariationModes) {
     return k_success;
 }
 
+TEST_CASE(TestTimbreXfadeIndependentOfRegionOrder) {
+    auto& fix = tests::CreateOrFetchFixtureObject<VoiceTestFixture>(tester);
+    auto& voice = fix.pool->voices[0];
+
+    sample_lib::Region const soft {.timbre_layering = {.layer_range = sample_lib::Range<u8> {0, 90}}};
+    sample_lib::Region const loud {.timbre_layering = {.layer_range = sample_lib::Range<u8> {10, 100}}};
+
+    struct Gains {
+        f32 soft;
+        f32 loud;
+    };
+
+    auto const xfade_gains = [&](bool loud_declared_first, f32 knob_pos_01) {
+        for (auto const index : Range(2u)) {
+            auto& s = voice.sound_sources[index];
+            s.is_active = true;
+            s.source_data = VoiceSoundSource::SampleSource {};
+            s.source_data.Get<VoiceSoundSource::SampleSource>().region =
+                ((index == 0) == loud_declared_first) ? &loud : &soft;
+        }
+        UpdateXfade(voice, knob_pos_01, true);
+        auto const& first = voice.sound_sources[0].source_data.Get<VoiceSoundSource::SampleSource>();
+        auto const& second = voice.sound_sources[1].source_data.Get<VoiceSoundSource::SampleSource>();
+        for (auto& s : voice.sound_sources)
+            s.is_active = false;
+        return loud_declared_first ? Gains {.soft = second.xfade_vol, .loud = first.xfade_vol}
+                                   : Gains {.soft = first.xfade_vol, .loud = second.xfade_vol};
+    };
+
+    for (auto const loud_declared_first : Array {false, true}) {
+        CAPTURE(loud_declared_first);
+
+        auto const at_overlap_start = xfade_gains(loud_declared_first, 10.0f / 99);
+        CHECK_APPROX_EQ(at_overlap_start.soft, 1.0f, 0.001f);
+        CHECK_APPROX_EQ(at_overlap_start.loud, 0.0f, 0.001f);
+
+        auto const at_overlap_middle = xfade_gains(loud_declared_first, 50.0f / 99);
+        CHECK_APPROX_EQ(at_overlap_middle.soft, at_overlap_middle.loud, 0.001f);
+
+        auto const near_overlap_end = xfade_gains(loud_declared_first, 89.99f / 99);
+        CHECK_APPROX_EQ(near_overlap_end.soft, 0.0f, 0.001f);
+        CHECK_APPROX_EQ(near_overlap_end.loud, 1.0f, 0.001f);
+    }
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterVoiceTests) {
     REGISTER_TEST(TestEqualPanGains);
+    REGISTER_TEST(TestTimbreXfadeIndependentOfRegionOrder);
     REGISTER_TEST(TestVoiceProcessingSampler);
     REGISTER_TEST(TestVoiceProcessingGranular);
     REGISTER_TEST(TestGranularShareGrains);
