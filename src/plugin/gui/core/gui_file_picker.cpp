@@ -101,13 +101,15 @@ void OpenFilePickerInstallPackage(FilePickerState& state, persistent_store::Stor
                                       .ValueOr(KnownDirectory(out.file_picker_options_arena,
                                                               KnownDirectoryType::Downloads,
                                                               {.create = false}));
-    out.file_picker_dialog = FilePickerDialogOptions {
-        .type = FilePickerDialogOptions::Type::OpenFile,
-        .title = "Select 1 or more Floe Package",
-        .default_folder = default_folder,
-        .filters = k_filters,
-        .allow_multiple_selection = true,
-    };
+    out.file_picker_dialog =
+        FilePickerDialogOptions {
+            .type = FilePickerDialogOptions::Type::OpenFile,
+            .title = "Select 1 or more Floe Package",
+            .default_folder = default_folder,
+            .filters = k_filters,
+            .allow_multiple_selection = true,
+        }
+            .Clone(out.file_picker_options_arena);
 
     state.data = FilePickerStateType::InstallPackage;
 }
