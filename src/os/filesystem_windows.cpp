@@ -468,14 +468,19 @@ MutableString KnownDirectory(Allocator& a, KnownDirectoryType type, KnownDirecto
         WCHAR buffer[MAX_PATH + 1];
         auto size = GetTempPathW((DWORD)ArraySize(buffer), buffer);
         WString wide_path {};
-        if (size) {
+        if (size && size < ArraySize(buffer)) {
             if (auto const last = buffer[size - 1]; last == L'\\' || last == L'/') --size;
+            buffer[size] = L'\0';
             wide_path = {buffer, (usize)size};
         } else {
             if (options.error_log) {
-                auto _ = fmt::FormatToWriter(*options.error_log,
-                                             "Failed to get temp path: {}",
-                                             FilesystemWin32ErrorCode(GetLastError(), "GetTempPathW"));
+                if (size) {
+                    auto _ = fmt::FormatToWriter(*options.error_log, "Temp path is too long");
+                } else {
+                    auto _ = fmt::FormatToWriter(*options.error_log,
+                                                 "Failed to get temp path: {}",
+                                                 FilesystemWin32ErrorCode(GetLastError(), "GetTempPathW"));
+                }
             }
             wide_path = L"C:\\Windows\\Temp"_s;
         }
