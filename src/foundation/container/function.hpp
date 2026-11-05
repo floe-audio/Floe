@@ -17,8 +17,16 @@ struct FunctionRef<ReturnType(Args...)> {
     template <typename F>
     requires(!Same<FunctionRef, RemoveReference<F>> && FunctionWithSignature<F, ReturnType, Args...>)
     constexpr FunctionRef(F&& func) {
-        invoke_function = [](void* d, Args... args) -> ReturnType { return (*(decltype(&func))d)(args...); };
-        function_object = (void*)&func;
+        if constexpr (FunctionPointer<Decay<F>>) {
+            // Store the function's address rather than the address of a possibly-temporary pointer.
+            invoke_function = [](void* d, Args... args) -> ReturnType { return ((Decay<F>)d)(args...); };
+            function_object = (void*)(Decay<F>)func;
+        } else {
+            invoke_function = [](void* d, Args... args) -> ReturnType {
+                return (*(decltype(&func))d)(args...);
+            };
+            function_object = (void*)&func;
+        }
     }
 
     constexpr ReturnType operator()(Args... args) const {
@@ -44,9 +52,16 @@ struct TrivialFunctionRef<ReturnType(Args...)> {
     requires(!Same<TrivialFunctionRef, F> && FunctionWithSignature<F, ReturnType, Args...> &&
              (FunctionPointer<Decay<F>> || TriviallyCopyable<F>))
     constexpr TrivialFunctionRef(F const& func) {
-        invoke_function = [](void* d, Args... args) -> ReturnType { return (*(F*)d)(args...); };
-        function_object = (void*)&func;
-        function_object_size = !FunctionPointer<Decay<F>> ? sizeof(Decay<F>) : 0;
+        if constexpr (FunctionPointer<Decay<F>>) {
+            // Store the function's address rather than the address of a possibly-temporary pointer.
+            invoke_function = [](void* d, Args... args) -> ReturnType { return ((Decay<F>)d)(args...); };
+            function_object = (void*)(Decay<F>)func;
+            function_object_size = 0;
+        } else {
+            invoke_function = [](void* d, Args... args) -> ReturnType { return (*(F*)d)(args...); };
+            function_object = (void*)&func;
+            function_object_size = sizeof(Decay<F>);
+        }
     }
 
     TrivialFunctionRef CloneObject(ArenaAllocator& a) const {

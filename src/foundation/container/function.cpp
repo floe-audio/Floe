@@ -156,6 +156,21 @@ TEST_CASE(TestFunction) {
         other();
     }
 
+    SUBCASE("refs to function pointer values don't refer to the pointer variable") {
+        static int value = 0;
+        value = 0;
+        void (*function_pointer)() = []() { value = 1; };
+        FunctionRef<void()> const ref {function_pointer};
+        TrivialFunctionRef<void()> const trivial_ref {function_pointer};
+        function_pointer = []() { value = 2; };
+
+        ref();
+        CHECK_EQ(value, 1);
+        value = 0;
+        trivial_ref();
+        CHECK_EQ(value, 1);
+    }
+
     return k_success;
 }
 
