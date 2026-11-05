@@ -329,8 +329,8 @@ struct FxOrderH {
         while (lua_next(lua, -2) != 0) {
             if (lua_isinteger(lua, -2) && lua_isinteger(lua, -1)) {
                 auto const index = (u32)lua_tointeger(lua, -2) - 1;
-                auto const fx = (EffectType)lua_tointeger(lua, -1);
-                if (index < k_num_effect_types) order[index] = fx;
+                auto const fx = (u64)lua_tointeger(lua, -1);
+                if (index < k_num_effect_types && fx < k_num_effect_types) order[index] = (EffectType)fx;
             }
             lua_pop(lua, 1);
         }
