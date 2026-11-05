@@ -227,6 +227,7 @@ GuiState::GuiState(Engine& engine)
 }
 
 GuiState::~GuiState() {
+    CancelConfirmationDialog(confirmation_dialog_state);
     Shutdown(library_images);
     Shutdown(waveform_images);
 

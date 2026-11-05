@@ -19,3 +19,4 @@ struct ConfirmationDialogState {
 };
 
 void DoConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& state);
+void CancelConfirmationDialog(ConfirmationDialogState& state);

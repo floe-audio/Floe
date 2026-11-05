@@ -6,6 +6,13 @@
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 
+static void RunAndClearCallback(ConfirmationDialogState& state, ConfirmationDialogResult result) {
+    if (!state.callback) return;
+    auto const callback = state.callback;
+    state.callback = nullptr;
+    callback(result);
+}
+
 static void ConfirmationDialogContent(GuiBuilder& builder, ConfirmationDialogState& state) {
     auto const panel = DoBox(builder,
                              {
@@ -41,12 +48,12 @@ static void ConfirmationDialogContent(GuiBuilder& builder, ConfirmationDialogSta
 
     if (TextButton(builder, buttons_container, {.text = "Cancel"})) {
         builder.imgui.CloseTopModal();
-        if (state.callback) state.callback(ConfirmationDialogResult::Cancel);
+        RunAndClearCallback(state, ConfirmationDialogResult::Cancel);
     }
 
     if (TextButton(builder, buttons_container, {.text = "OK", .is_default = true})) {
         builder.imgui.CloseTopModal();
-        if (state.callback) state.callback(ConfirmationDialogResult::Ok);
+        RunAndClearCallback(state, ConfirmationDialogResult::Ok);
     }
 }
 
@@ -77,7 +84,12 @@ static void ConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& sta
 }
 
 void DoConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& state) {
-    if (!builder.imgui.IsModalOpen(state.k_id)) return;
+    if (!builder.imgui.IsModalOpen(state.k_id)) {
+        // Closed some other way, such as Escape or clicking outside. Callbacks may own memory, so they must
+        // run.
+        RunAndClearCallback(state, ConfirmationDialogResult::Cancel);
+        return;
+    }
     DoBoxViewport(builder,
                   {
                       .run = [&state](GuiBuilder& b) { ConfirmationDialog(b, state); },
@@ -85,4 +97,8 @@ void DoConfirmationDialog(GuiBuilder& builder, ConfirmationDialogState& state) {
                       .imgui_id = state.k_id,
                       .viewport_config = k_default_modal_viewport,
                   });
+}
+
+void CancelConfirmationDialog(ConfirmationDialogState& state) {
+    RunAndClearCallback(state, ConfirmationDialogResult::Cancel);
 }
