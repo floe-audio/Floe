@@ -170,6 +170,12 @@ struct TrivialAllocatedFunction<ReturnType(Args...)> {
 
     // Move assignment
     constexpr TrivialAllocatedFunction& operator=(TrivialAllocatedFunction&& other) {
+        if (this == &other) return *this;
+        if (&allocator != &other.allocator && other.function_object_size) {
+            *this = (TrivialFunctionRef<ReturnType(Args...)>)other;
+            other = TrivialFunctionRef<ReturnType(Args...)> {};
+            return *this;
+        }
         if (function_object_size) allocator.Free(AllocatedSpan());
         invoke_function = Exchange(other.invoke_function, nullptr);
         function_object = Exchange(other.function_object, {});

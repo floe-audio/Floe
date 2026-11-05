@@ -106,6 +106,19 @@ TEST_CASE(TestFunction) {
             b();
             CHECK_EQ(value, 2);
         }
+
+        SUBCASE("move assign from a different allocator") {
+            int value = 0;
+            LeakDetectingAllocator other_allocator;
+            TrivialAllocatedFunction<void()> a {[&value]() { value = 1; }, allocator};
+            {
+                TrivialAllocatedFunction<void()> b {[&value]() { value = 2; }, other_allocator};
+                a = Move(b);
+                CHECK(!b);
+            }
+            a();
+            CHECK_EQ(value, 2);
+        }
     }
 
     SUBCASE("Ref") {

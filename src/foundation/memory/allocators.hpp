@@ -404,21 +404,8 @@ struct ArenaAllocator : public Allocator {
         other.current_region_cursor = {};
     }
 
-    ArenaAllocator& operator=(ArenaAllocator&& other) {
-        FreeAll();
-
-        first = other.first;
-        last = other.last;
-        current_region_cursor = other.current_region_cursor;
-        minimum_bytes_per_region = other.minimum_bytes_per_region;
-        child_allocator = other.child_allocator;
-
-        other.first = {};
-        other.last = {};
-        other.current_region_cursor = {};
-
-        return *this;
-    }
+    // child_allocator is a reference so it can't be rebound.
+    ArenaAllocator& operator=(ArenaAllocator&& other) = delete;
 
     NON_COPYABLE(ArenaAllocator);
 
@@ -687,5 +674,7 @@ template <usize static_size>
 struct ArenaAllocatorWithInlineStorage : public ArenaAllocator {
     ArenaAllocatorWithInlineStorage(Allocator& fallback)
         : ArenaAllocator(fallback, Span<u8>(inline_storage, static_size)) {}
+    // The regions would point into the moved-from object's inline storage.
+    NON_COPYABLE_AND_MOVEABLE(ArenaAllocatorWithInlineStorage);
     alignas(k_max_alignment) u8 inline_storage[static_size];
 };
