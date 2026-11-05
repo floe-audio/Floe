@@ -17,13 +17,31 @@
 
 static ErrorCodeOr<ImageBytes> DecodeJpgOrPng(Span<u8 const> image_data, Allocator& allocator) {
     if (!image_data.size) return ErrorCode(CommonError::InvalidFileFormat);
+    if (image_data.size > (usize)LargestRepresentableValue<int>())
+        return ErrorCode(CommonError::InvalidFileFormat);
+
+    // Reject dimensions that don't fit ImageBytes before stb allocates the decoded buffer.
+    {
+        int header_width;
+        int header_height;
+        int header_channels;
+        if (!stbi_info_from_memory(image_data.data,
+                                   (int)image_data.size,
+                                   &header_width,
+                                   &header_height,
+                                   &header_channels))
+            return ErrorCode(CommonError::InvalidFileFormat);
+        if (header_width > LargestRepresentableValue<u16>() ||
+            header_height > LargestRepresentableValue<u16>())
+            return ErrorCode(CommonError::InvalidFileFormat);
+    }
 
     // Always returns rgba because we specify k_rgba_channels as the output channels.
     int actual_number_channels;
     int width;
     int height;
     auto const rgba = stbi_load_from_memory(image_data.data,
-                                            CheckedCast<int>(image_data.size),
+                                            (int)image_data.size,
                                             &width,
                                             &height,
                                             &actual_number_channels,
