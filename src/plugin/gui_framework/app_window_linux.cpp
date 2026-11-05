@@ -108,8 +108,11 @@ ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOption
     if (!f) return FilesystemErrnoErrorCode(errno);
 
     char filenames[8000];
-    auto _ = fgets(filenames, ArraySize(filenames), f);
+    auto const read_ok = fgets(filenames, ArraySize(filenames), f) != nullptr;
     pclose(f);
+
+    // Cancelling the dialog produces no output.
+    if (!read_ok) return k_success;
 
     auto output = FromNullTerminated(filenames);
     LogDebug({}, "zenity output: {}", output);
