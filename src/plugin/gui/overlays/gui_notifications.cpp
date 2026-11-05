@@ -113,6 +113,7 @@ void NotificationsPanel(GuiBuilder& builder, Notifications& notifications) {
                   .font = FontType::Body,
               });
 
+        bool dismiss_clicked = false;
         if (config.dismissable) {
             if (DoBox(builder,
                       {
@@ -126,7 +127,7 @@ void NotificationsPanel(GuiBuilder& builder, Notifications& notifications) {
                           .extra_margin_for_mouse_events = 8,
                       })
                     .button_fired) {
-                next = notifications.Remove(it);
+                dismiss_clicked = true;
             }
         }
 
@@ -140,6 +141,9 @@ void NotificationsPanel(GuiBuilder& builder, Notifications& notifications) {
                       .font = FontType::Body,
                   });
         }
+
+        // config can reference the notification's memory, so remove only after we're done with it.
+        if (dismiss_clicked) next = notifications.Remove(it);
     }
 }
 
