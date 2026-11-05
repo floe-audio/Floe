@@ -274,15 +274,15 @@ void OnPreferenceChanged(AutosaveState& state, prefs::Key const& key, prefs::Val
 
     // Use a loop so we get a compile-time error if miss items from the AutosaveSetting enum.
     for (auto const setting : EnumIterator<AutosaveSetting>()) {
-        if (prefs::Match(key, value, SettingDescriptor(setting))) {
+        if (auto const matched = prefs::Match(key, value, SettingDescriptor(setting))) {
             switch (setting) {
                 case AutosaveSetting::AutosaveIntervalSeconds: break;
                 case AutosaveSetting::MaxAutosavesPerInstance:
-                    state.max_autosaves_per_instance.Store(CheckedCast<u16>(value->Get<s64>()),
+                    state.max_autosaves_per_instance.Store(CheckedCast<u16>(matched->Get<s64>()),
                                                            StoreMemoryOrder::Relaxed);
                     break;
                 case AutosaveSetting::AutosaveDeleteAfterDays:
-                    state.autosave_delete_after_days.Store(CheckedCast<u16>(value->Get<s64>()),
+                    state.autosave_delete_after_days.Store(CheckedCast<u16>(matched->Get<s64>()),
                                                            StoreMemoryOrder::Relaxed);
                     break;
                 case AutosaveSetting::Count: break;
@@ -291,8 +291,8 @@ void OnPreferenceChanged(AutosaveState& state, prefs::Key const& key, prefs::Val
         }
     }
 
-    if (prefs::Match(key, value, ExperimentalParamsPreferenceDescriptor()))
-        state.write_experimental_params.Store(value->Get<bool>(), StoreMemoryOrder::Relaxed);
+    if (auto const enabled = prefs::MatchBool(key, value, ExperimentalParamsPreferenceDescriptor()))
+        state.write_experimental_params.Store(*enabled, StoreMemoryOrder::Relaxed);
 }
 
 DynamicArrayBounded<char, k_max_instance_id_size> InstanceId(AutosaveState& state) {

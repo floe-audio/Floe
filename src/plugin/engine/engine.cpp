@@ -1101,8 +1101,8 @@ static void PluginOnPreferenceChanged(Engine& engine, prefs::Key key, prefs::Val
     ASSERT(g_is_logical_main_thread);
     OnPreferenceChanged(engine.autosave_state, key, value);
 
-    if (prefs::Match(key, value, ExperimentalParamsPreferenceDescriptor())) {
-        if (!value->Get<bool>()) {
+    if (auto const enabled = prefs::MatchBool(key, value, ExperimentalParamsPreferenceDescriptor())) {
+        if (!*enabled) {
             // Default-out all experimental params.
             for (auto const i : Range(k_num_parameters)) {
                 auto const& desc = k_param_descriptors[i];
