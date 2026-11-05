@@ -518,6 +518,24 @@ TEST_CASE(TestDynamicArrayBasics) {
                     dyn::Replace(str, "aa"_s, ""_s);
                     REQUIRE(str == " bb cc  d"_s);
                 }
+                SUBCASE("longer replacement with match at the end") {
+                    dyn::Assign(str, "a b a"_s);
+                    CHECK_EQ(dyn::Replace(str, "a"_s, "xyz"_s), 2u);
+                    REQUIRE(str == "xyz b xyz"_s);
+                }
+                SUBCASE("shorter replacement doesn't match stale elements") {
+                    dyn::Assign(str, "aaaa"_s);
+                    CHECK_EQ(dyn::Replace(str, "aa"_s, ""_s), 2u);
+                    REQUIRE(str == ""_s);
+                    dyn::Assign(str, "aab"_s);
+                    CHECK_EQ(dyn::Replace(str, "ab"_s, "a"_s), 1u);
+                    REQUIRE(str == "aa"_s);
+                }
+                SUBCASE("replacement containing the search string") {
+                    dyn::Assign(str, "a a"_s);
+                    CHECK_EQ(dyn::Replace(str, "a"_s, "aa"_s), 2u);
+                    REQUIRE(str == "aa aa"_s);
+                }
             }
         }
     }

@@ -330,7 +330,8 @@ Replace(DynType& array,
     if (search_span.size == 0) return 0;
 
     usize num_replaced = 0;
-    for (auto const array_index : Range(array.size - (search_span.size - 1))) {
+    usize array_index = 0;
+    while (array_index + search_span.size <= array.size) {
         bool match = true;
         for (auto const search_index : Range(search_span.size)) {
             if (array.data[array_index + search_index] != search_span[search_index]) {
@@ -342,6 +343,10 @@ Replace(DynType& array,
             dyn::Remove(array, array_index, search_span.size);
             dyn::InsertSpan(array, array_index, replacement_span);
             ++num_replaced;
+            // Skip the replacement so it's never searched (it might contain the search string).
+            array_index += replacement_span.size;
+        } else {
+            ++array_index;
         }
     }
     return num_replaced;
