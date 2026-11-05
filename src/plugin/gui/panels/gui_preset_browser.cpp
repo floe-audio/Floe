@@ -352,6 +352,7 @@ void PresetRightClickMenu(GuiBuilder& builder,
             if (outcome.HasValue()) {
                 context.engine.error_notifications.RemoveError(error_id);
             } else if (auto item = context.engine.error_notifications.BeginWriteError(error_id)) {
+                DEFER { context.engine.error_notifications.EndWriteError(*item); };
                 item->title = "Failed to send preset to trash"_s;
                 item->error_code = outcome.Error();
             }
