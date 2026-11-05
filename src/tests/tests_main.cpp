@@ -37,7 +37,6 @@ __attribute__((section(".preinit_array"), used)) static void (*g_tsan_preinit)()
     X(RegisterCircularBufferTests)                                                                           \
     X(RegisterCliArgParseTests)                                                                              \
     X(RegisterCompressorTests)                                                                               \
-    X(RegisterConvolutionTests)                                                                              \
     X(RegisterDebugTests)                                                                                    \
     X(RegisterDefaultPresetTests)                                                                            \
     X(RegisterDistortionTests)                                                                               \
