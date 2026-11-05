@@ -351,6 +351,8 @@ ReadMdataFile(ArenaAllocator& arena, ArenaAllocator& scratch_arena, Reader& read
                 if (group_info.round_robin_or_xfade_index > (s32)max_rr_pos)
                     max_rr_pos = CheckedCast<u32>(group_info.round_robin_or_xfade_index);
 
+                if (regions_span_index == inst->regions.size)
+                    return ErrorCode(CommonError::InvalidFileFormat);
                 inst->regions[regions_span_index++] = Region {
                     .path = {file_path},
                     .root_key = CheckedCast<u8>(region_info.root_note),
