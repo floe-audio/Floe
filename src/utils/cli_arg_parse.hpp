@@ -110,8 +110,8 @@ PUBLIC ErrorCodeOr<void> PrintUsage(Writer writer,
     for (auto const& arg : implicit_args)
         TRY(measure_arg(arg));
 
-    static auto print_arg = [max_key_val_size](Writer writer,
-                                               CommandLineArgDefinition const& arg) -> ErrorCodeOr<void> {
+    auto const print_arg = [max_key_val_size](Writer writer,
+                                              CommandLineArgDefinition const& arg) -> ErrorCodeOr<void> {
         usize key_val_size = 0;
         {
             Writer key_val_size_writer {};
