@@ -122,7 +122,7 @@ PUBLIC constexpr bool Assign(DynType& array, SpanFor<DynType> new_items) {
             ASSERT(src_begin == buf_begin && new_items.size == array.size);
             return true;
         }
-        CallDestructors(array.Items());
+        Clear(array);
     }
     return dyn::AssignAssumingAlreadyEmpty(array, new_items);
 }
@@ -135,7 +135,7 @@ PUBLIC constexpr void AssignFitInCapacity(DynType& array, SpanFor<DynType> new_i
 template <class... Args>
 PUBLIC constexpr bool AssignRepeated(DynArray auto& array, usize count, Args&&... args) {
     using ValueType = typename RemoveReference<decltype(array)>::ValueType;
-    CallDestructors(array.Items());
+    Clear(array);
     if (!array.Reserve(count)) return false;
     array.ResizeWithoutCtorDtor(count);
     for (auto const item_index : Range(count))
@@ -154,8 +154,8 @@ PUBLIC constexpr bool MoveAssignAssumingAlreadyEmpty(DynType& array, MutableSpan
 
 template <DynArray DynType>
 PUBLIC constexpr bool MoveAssign(DynType& array, MutableSpanFor<DynType> new_items) {
-    if (array.size) CallDestructors(array.Items());
-    return ArrayMoveAssignAssumingAlreadyEmpty(array, new_items);
+    Clear(array);
+    return MoveAssignAssumingAlreadyEmpty(array, new_items);
 }
 
 template <DynArray DynType, typename ArgumentType = DynType::ValueType>
@@ -435,7 +435,7 @@ struct DynamicArray {
             other.items = {};
             other.capacity_bytes = {};
         } else {
-            dyn::CallDestructors(Items());
+            dyn::Clear(*this);
             Reserve(other.size);
             for (auto const item_index : Range(other.size))
                 PLACEMENT_NEW(items.data + item_index) Type(Move(other.data[item_index]));

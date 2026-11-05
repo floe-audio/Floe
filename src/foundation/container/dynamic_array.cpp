@@ -635,7 +635,69 @@ TEST_CASE(TestDynamicArrayBoundedBasics) {
     return k_success;
 }
 
+struct LifetimeChecked {
+    static constexpr u32 k_alive = 0x600DF00D;
+    static inline u32 num_dead_uses = 0;
+
+    LifetimeChecked() = default;
+    LifetimeChecked(LifetimeChecked const& other) { CheckAlive(other); }
+    LifetimeChecked(LifetimeChecked&& other) { CheckAlive(other); }
+    ~LifetimeChecked() {
+        CheckAlive(*this);
+        magic = 0;
+    }
+    static void CheckAlive(LifetimeChecked const& obj) {
+        if (obj.magic != k_alive) ++num_dead_uses;
+    }
+
+    u32 magic = k_alive;
+};
+
+TEST_CASE(TestDynamicArrayAssignNonTrivial) {
+    LifetimeChecked::num_dead_uses = 0;
+    LeakDetectingAllocator a1;
+    LeakDetectingAllocator a2;
+    LifetimeChecked const source_items[100] {};
+
+    SUBCASE("Assign") {
+        DynamicArray<LifetimeChecked> arr {a1};
+        dyn::Resize(arr, 2);
+        dyn::Assign(arr, source_items);
+        REQUIRE(arr.size == ArraySize(source_items));
+    }
+
+    SUBCASE("AssignRepeated") {
+        DynamicArray<LifetimeChecked> arr {a1};
+        dyn::Resize(arr, 2);
+        dyn::AssignRepeated(arr, 100);
+        REQUIRE(arr.size == 100);
+    }
+
+    SUBCASE("cross-allocator move assignment") {
+        DynamicArray<LifetimeChecked> arr {a1};
+        dyn::Resize(arr, 2);
+        DynamicArray<LifetimeChecked> other {a2};
+        dyn::Resize(other, 100);
+        arr = Move(other);
+        REQUIRE(arr.size == 100);
+        REQUIRE(other.size == 0);
+    }
+
+    SUBCASE("bounded move assignment") {
+        DynamicArrayBounded<LifetimeChecked, 4> arr;
+        dyn::Resize(arr, 2);
+        DynamicArrayBounded<LifetimeChecked, 4> other;
+        dyn::Resize(other, 3);
+        arr = Move(other);
+        REQUIRE(arr.size == 3);
+    }
+
+    CHECK_EQ(LifetimeChecked::num_dead_uses, 0u);
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterDynamicArrayTests) {
+    REGISTER_TEST(TestDynamicArrayAssignNonTrivial);
     REGISTER_TEST(TestDynamicArrayChar);
     REGISTER_TEST(TestDynamicArrayBasics<AllocedString>);
     REGISTER_TEST(TestDynamicArrayBasics<Optional<AllocedString>>);
