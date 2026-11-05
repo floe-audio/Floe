@@ -29,6 +29,8 @@ StoreTable Read(ArenaAllocator& arena, String data) {
         __builtin_memcpy_inline(&header, data_ptr, sizeof(ChunkHeader));
         data_ptr += sizeof(ChunkHeader);
 
+        if ((usize)(data_end - data_ptr) < header.size) break; // Invalid data, same as above.
+
         auto value = arena.New<Value>(Value {
             .data = header.size ? Span {data_ptr, header.size} : Span<u8 const> {},
             .next = nullptr,
