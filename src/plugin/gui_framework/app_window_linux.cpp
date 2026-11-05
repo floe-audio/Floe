@@ -49,6 +49,17 @@ Optional<UiSize> ScreenSizePhysicalPixels(PuglWorld* world, void*) {
     return UiSize {(u16)width, (u16)height};
 }
 
+// Single-quoted so the shell treats everything literally; a ' is written as '\''.
+static void AppendShellQuoted(auto& command, String str) {
+    dyn::Append(command, '\'');
+    for (auto const c : str)
+        if (c == '\'')
+            dyn::AppendSpan(command, "'\\''"_s);
+        else
+            dyn::Append(command, c);
+    dyn::Append(command, '\'');
+}
+
 ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& args) {
     ASSERT(g_is_logical_main_thread);
     auto& native = *window.native_state;
@@ -70,18 +81,26 @@ ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOption
     // IMPROVE: be more considered with buffer size
     DynamicArrayBounded<char, 3000> command {};
     dyn::AppendSpan(command, "zenity --file-selection "_s);
-    fmt::Append(command, "--title=\"{}\" ", args.title);
-    if (args.default_folder)
-        // Trailing backslash is necessary for Zenity to set the folder.
-        fmt::Append(command, "--filename=\"{}/\" ", *args.default_folder);
-    // Zenity expects: --file-filter="Name|*.ext1 *.ext2"
+    dyn::AppendSpan(command, "--title="_s);
+    AppendShellQuoted(command, args.title);
+    dyn::Append(command, ' ');
+    if (args.default_folder) {
+        dyn::AppendSpan(command, "--filename="_s);
+        AppendShellQuoted(command, *args.default_folder);
+        // Trailing slash is necessary for Zenity to set the folder.
+        dyn::AppendSpan(command, "/ "_s);
+    }
+    // Zenity expects: --file-filter='Name|*.ext1 *.ext2'
     for (auto const& f : args.filters) {
-        fmt::Append(command, "--file-filter=\"{}|", f.description);
+        DynamicArrayBounded<char, 1000> filter_arg {};
+        fmt::Append(filter_arg, "{}|", f.description);
         for (auto const [index, w] : Enumerate(f.wildcard_filters)) {
-            if (index) dyn::AppendSpan(command, " "_s);
-            dyn::AppendSpan(command, w);
+            if (index) dyn::Append(filter_arg, ' ');
+            dyn::AppendSpan(filter_arg, w);
         }
-        dyn::AppendSpan(command, "\" "_s);
+        dyn::AppendSpan(command, "--file-filter="_s);
+        AppendShellQuoted(command, filter_arg);
+        dyn::Append(command, ' ');
     }
 
     if (args.allow_multiple_selection) dyn::AppendSpan(command, "--multiple "_s);
