@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <valgrind/valgrind.h>
 
+#include "tests/framework.hpp"
 #include "utils/debug_info/debug_info.h"
 
 #include "error_reporting.hpp"
@@ -28,6 +29,35 @@ static u32 g_tracy_init = 0;
 Atomic<PluginHost> g_plugin_host {PluginHost::Unknown};
 
 static Atomic<PanicResponse> g_panic_response {PanicResponse::Quarantine};
+
+// If another exception handler resumes execution without fixing the cause, the same instruction faults again
+// and again. We've seen hundreds of identical reports from a single process this way. Different crashes, or a
+// chain of them, are still valuable so we only skip ones we've already reported.
+static Atomic<u64> g_reported_crash_hashes[32] {};
+
+static u64 CrashHash(String crash_message, Span<uintptr const> stacktrace) {
+    auto hash = HashInit();
+    HashUpdate(hash, crash_message);
+    HashUpdate(hash, stacktrace);
+    if (hash == 0) hash = 1; // 0 marks an empty slot
+    return hash;
+}
+
+// Returns false if the crash was already reported, or if we've already reported so many different crashes
+// that the table is full.
+static bool ClaimFirstReportOfCrash(Span<Atomic<u64>> reported_hashes, u64 hash) {
+    ASSERT(hash != 0);
+    for (auto& slot : reported_hashes) {
+        u64 expected = 0;
+        if (slot.CompareExchangeStrong(expected,
+                                       hash,
+                                       RmwMemoryOrder::AcquireRelease,
+                                       LoadMemoryOrder::Acquire))
+            return true;
+        if (expected == hash) return false;
+    }
+    return false;
+}
 
 PanicResponse GetPanicResponse() { return g_panic_response.Load(LoadMemoryOrder::Acquire); }
 void SetPanicResponse(PanicResponse response) { g_panic_response.Store(response, StoreMemoryOrder::Release); }
@@ -132,6 +162,8 @@ void GlobalInit(GlobalInitOptions options) {
         // completely unrelated to us. We don't want to write a crash report in that case.
         if (HasAddressesInCurrentModule(stacktrace) == InSelfModule::No) return;
 
+        if (!ClaimFirstReportOfCrash(g_reported_crash_hashes, CrashHash(crash_message, stacktrace))) return;
+
         if (!PRODUCTION_BUILD && IsRunningUnderDebugger()) __builtin_debugtrap();
 
         FixedSizeAllocator<4000> allocator {nullptr};
@@ -199,3 +231,29 @@ void GlobalDeinit(GlobalShutdownOptions options) {
     ASSERT(g_tracy_init);
     if (--g_tracy_init == 0) ShutdownTracy();
 }
+
+TEST_CASE(TestClaimFirstReportOfCrash) {
+    Atomic<u64> reported_hashes[3] {};
+
+    uintptr const stack_a[] = {0x1000, 0x2000};
+    uintptr const stack_b[] = {0x1000, 0x3000};
+    auto const hash_a = CrashHash("access violation", stack_a);
+    auto const hash_b = CrashHash("access violation", stack_b);
+    auto const hash_c = CrashHash("divide by zero", stack_a);
+    CHECK_NEQ(hash_a, hash_b);
+    CHECK_NEQ(hash_a, hash_c);
+
+    CHECK(ClaimFirstReportOfCrash(reported_hashes, hash_a));
+    for (auto _ : Range(100))
+        CHECK(!ClaimFirstReportOfCrash(reported_hashes, hash_a));
+
+    CHECK(ClaimFirstReportOfCrash(reported_hashes, hash_b));
+    CHECK(ClaimFirstReportOfCrash(reported_hashes, hash_c));
+    CHECK(!ClaimFirstReportOfCrash(reported_hashes, hash_b));
+
+    // Table is full.
+    CHECK(!ClaimFirstReportOfCrash(reported_hashes, CrashHash("other", stack_a)));
+    return k_success;
+}
+
+TEST_REGISTRATION(RegisterGlobalTests) { REGISTER_TEST(TestClaimFirstReportOfCrash); }

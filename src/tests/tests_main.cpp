@@ -52,6 +52,7 @@ __attribute__((section(".preinit_array"), used)) static void (*g_tsan_preinit)()
     X(RegisterFunctionQueueTests)                                                                            \
     X(RegisterFunctionTests)                                                                                 \
     X(RegisterGeometryTests)                                                                                 \
+    X(RegisterGlobalTests)                                                                                   \
     X(RegisterHashTableTests)                                                                                \
     X(RegisterHostingTests)                                                                                  \
     X(RegisterImageTests)                                                                                    \
