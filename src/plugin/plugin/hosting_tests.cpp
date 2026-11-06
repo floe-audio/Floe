@@ -593,6 +593,9 @@ TEST_CASE(TestHostingClap) {
         return k_success;
     }
 
+    if (!tester.clap_plugin_path.size)
+        TEST_FAILED("no CLAP plugin path: pass --clap-plugin-path or set FLOE_CLAP_PLUGIN_PATH");
+
     struct Fixture {
         [[maybe_unused]] Fixture(tests::Tester&) {}
         [[maybe_unused]] ~Fixture() {}
