@@ -410,6 +410,10 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
                                     values.size));
             return error(CliError::InvalidArguments);
         }
+        if (FindIf(values, [](String value) { return value.size == 0; })) {
+            TRY(fmt::FormatToWriter(writer, "Option --{} requires non-empty values\n", key));
+            return error(CliError::InvalidArguments);
+        }
 
         result[*def_index].values = values.ToOwnedSpan();
         result[*def_index].was_provided = true;

@@ -285,6 +285,34 @@ TEST_CASE(TestParseCommandLineArgs) {
             CHECK(d_arg.values == Array {"1"_s, "2"_s});
         }
 
+        SUBCASE("empty value is rejected") {
+            auto const o = ParseCommandLineArgs(writer,
+                                                a,
+                                                "my-program",
+                                                Array {"--a-arg"_s, ""},
+                                                k_arg_defs,
+                                                {
+                                                    .handle_help_option = false,
+                                                    .print_usage_on_error = false,
+                                                });
+            REQUIRE(o.HasError());
+            CHECK(o.Error() == CliError::InvalidArguments);
+        }
+
+        SUBCASE("empty value among multiple values is rejected") {
+            auto const o = ParseCommandLineArgs(writer,
+                                                a,
+                                                "my-program",
+                                                Array {"--a-arg=v"_s, "--e-arg", "1", "", "2"},
+                                                k_arg_defs,
+                                                {
+                                                    .handle_help_option = false,
+                                                    .print_usage_on_error = false,
+                                                });
+            REQUIRE(o.HasError());
+            CHECK(o.Error() == CliError::InvalidArguments);
+        }
+
         SUBCASE("positionals via parse opts") {
             Span<String> positionals {};
             auto const o = ParseCommandLineArgs(writer,
