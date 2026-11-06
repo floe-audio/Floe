@@ -637,7 +637,7 @@ TEST_CASE(TestDynamicArrayBoundedBasics) {
 
 struct LifetimeChecked {
     static constexpr u32 k_alive = 0x600DF00D;
-    static inline u32 num_dead_uses = 0;
+    static inline u32 g_num_dead_uses = 0;
 
     LifetimeChecked() = default;
     LifetimeChecked(LifetimeChecked const& other) { CheckAlive(other); }
@@ -647,14 +647,14 @@ struct LifetimeChecked {
         magic = 0;
     }
     static void CheckAlive(LifetimeChecked const& obj) {
-        if (obj.magic != k_alive) ++num_dead_uses;
+        if (obj.magic != k_alive) ++g_num_dead_uses;
     }
 
     u32 magic = k_alive;
 };
 
 TEST_CASE(TestDynamicArrayAssignNonTrivial) {
-    LifetimeChecked::num_dead_uses = 0;
+    LifetimeChecked::g_num_dead_uses = 0;
     LeakDetectingAllocator a1;
     LeakDetectingAllocator a2;
     LifetimeChecked const source_items[100] {};
@@ -692,7 +692,7 @@ TEST_CASE(TestDynamicArrayAssignNonTrivial) {
         REQUIRE(arr.size == 3);
     }
 
-    CHECK_EQ(LifetimeChecked::num_dead_uses, 0u);
+    CHECK_EQ(LifetimeChecked::g_num_dead_uses, 0u);
     return k_success;
 }
 
