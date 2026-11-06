@@ -350,6 +350,8 @@ bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr d
     return false;
 }
 
+bool PollNativeFilePicker(AppWindow&) { return false; }
+
 // COM initialisation is confusing. To help clear things up:
 // - "Apartment" is a term used in COM to describe a threading isolation model.
 // - CoInitializeEx sets the apartment model for the calling thread.

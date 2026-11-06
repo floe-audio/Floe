@@ -17,15 +17,16 @@
 
 #define DIALOG_DELEGATE_CLASS MAKE_UNIQUE_OBJC_NAME(DialogDelegate)
 
-// Owns everything it uses because AppKit can call it from another thread, and can keep it alive after we've
-// closed the picker.
+// Owns everything shared with AppKit because AppKit can call into it from another thread, and can keep it
+// alive after we've closed the picker. Nothing AppKit calls touches the AppWindow; the window polls for the
+// response.
 @interface DIALOG_DELEGATE_CLASS : NSObject <NSOpenSavePanelDelegate>
 @property(copy) NSArray<NSString*>* wildcard_filters; // NOLINT. nil if there are no filters.
-@property(atomic) AppWindow* window; // NOLINT. Cleared when the picker closes.
+@property(atomic, strong) NSNumber* response; // NOLINT. NSModalResponse, nil until the picker completes.
 @end
 
 @implementation DIALOG_DELEGATE_CLASS
-// Not necessarily main-thread.
+// [thread-safe]
 - (BOOL)panel:(id)sender shouldEnableURL:(NSURL*)url {
     if (!url) return NO;
 
@@ -65,18 +66,21 @@ struct NativeAppWindowState {
 
 namespace native {
 
-constexpr uintptr k_file_picker_completed = 0xD1A106;
+bool NativeFilePickerOnClientMessage(AppWindow&, uintptr, uintptr) { return false; }
 
-bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr data2) {
+// [main-thread]
+bool PollNativeFilePicker(AppWindow& window) {
     ASSERT(g_is_logical_main_thread);
 
     auto& native = *window.native_state;
 
     if (!native.picker) return false;
-    if (data1 != k_file_picker_completed) return false;
 
     auto& native_file_picker = *native.picker;
     if (!native_file_picker.panel) return false;
+
+    NSNumber* ns_response = native_file_picker.delegate.response;
+    if (!ns_response) return false;
 
     ASSERT([NSThread isMainThread]);
     // When presented as a sheet, the panel may still be on-screen when the completion handler runs.
@@ -86,8 +90,7 @@ bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr d
 
     bool update_gui = false;
 
-    auto const response = (NSModalResponse)data2;
-    if (response == NSModalResponseOK) {
+    if ((NSModalResponse)ns_response.integerValue == NSModalResponseOK) {
         auto const append_result = [&](NSURL* url) {
             NSString* path = [[url path] stringByResolvingSymlinksInPath];
             auto utf8 = FromNullTerminated(path.UTF8String);
@@ -110,7 +113,6 @@ bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr d
         update_gui = true;
     }
 
-    native_file_picker.delegate.window = nullptr;
     native_file_picker.panel = nullptr; // release
     native_file_picker.delegate = nullptr; // release
     native.picker.Clear();
@@ -118,6 +120,7 @@ bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr d
     return update_gui;
 }
 
+// [main-thread]
 ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOptions const& options) {
     ASSERT(window.view);
     ASSERT(g_is_logical_main_thread);
@@ -131,7 +134,6 @@ ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOption
         ASSERT([NSThread isMainThread]);
 
         native_file_picker.delegate = [[DIALOG_DELEGATE_CLASS alloc] init];
-        native_file_picker.delegate.window = &window;
 
         switch (options.type) {
             case FilePickerDialogOptions::Type::OpenFile:
@@ -175,23 +177,12 @@ ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOption
         if (options.default_folder)
             panel.directoryURL = [NSURL fileURLWithPath:StringToNSString(*options.default_folder)];
 
-        // The block retains the delegate, so it can check whether the picker has been closed (and the window
-        // possibly destroyed) since.
+        // The block retains the delegate, so writing to it is safe even if the picker has been closed and the
+        // window destroyed since.
         DIALOG_DELEGATE_CLASS* delegate = native_file_picker.delegate;
+        // [thread-safe]
         auto const completion_handler = ^(NSModalResponse response) {
-          auto const window_ptr = delegate.window;
-          if (!window_ptr) return;
-          // I don't think we can assert that this is always the main thread, so let's send it via
-          // Pugl's event system which should guarantee main thread.
-          // This triggers NativeFilePickerOnClientMessage eventually.
-          PuglEvent const event {.client = {
-                                     .type = PUGL_CLIENT,
-                                     .flags = PUGL_IS_SEND_EVENT,
-                                     .data1 = k_file_picker_completed,
-                                     .data2 = (uintptr)response,
-                                 }};
-          auto const rc = puglSendEvent(window_ptr->view, &event);
-          ASSERT(rc == PUGL_SUCCESS);
+          delegate.response = @(response);
         };
 
         if (NSWindow* parent_window = ((__bridge NSView*)(void*)puglGetNativeView(window.view)).window) {
@@ -208,6 +199,7 @@ ErrorCodeOr<void> OpenNativeFilePicker(AppWindow& window, FilePickerDialogOption
     return k_success;
 }
 
+// [main-thread]
 void CloseNativeFilePicker(AppWindow& window) {
     // On rare ocassions in Logic Pro 11.0.1 (CLAP-as-AUv2), we've actually found it's possible that [NSThread
     // isMainThread] is false here. However, this is still workable so long as it's at least the logical main
@@ -220,7 +212,6 @@ void CloseNativeFilePicker(AppWindow& window) {
     auto& native_file_picker = *native.picker;
     if (!native_file_picker.panel) return;
     {
-        native_file_picker.delegate.window = nullptr;
         // cancel: rather than close: it ends the sheet session on the parent window.
         if ([NSThread isMainThread]) {
             [native_file_picker.panel cancel:nil];

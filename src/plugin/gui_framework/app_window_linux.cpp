@@ -22,6 +22,7 @@ namespace native {
 
 void CloseNativeFilePicker(AppWindow&) {}
 bool NativeFilePickerOnClientMessage(AppWindow&, uintptr, uintptr) { return false; }
+bool PollNativeFilePicker(AppWindow&) { return false; }
 
 f64 DoubleClickTimeMs(AppWindow const&) {
     // IMPROVE: get this somehow from the machine

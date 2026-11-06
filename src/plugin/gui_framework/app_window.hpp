@@ -115,6 +115,8 @@ void CloseNativeFilePicker(AppWindow& window);
 
 // Returns true to request the platform to update the GUI.
 bool NativeFilePickerOnClientMessage(AppWindow& window, uintptr data1, uintptr data2);
+// Called regularly from the GUI timer. Returns true to request the platform to update the GUI.
+bool PollNativeFilePicker(AppWindow& window);
 
 f64 DoubleClickTimeMs(AppWindow const& window);
 UiSize DefaultUiSizeFromDpi(void* native_window);

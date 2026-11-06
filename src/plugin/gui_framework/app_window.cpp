@@ -953,7 +953,10 @@ static PuglStatus EventHandler(PuglView* view, PuglEvent const* event) {
             }
 
             case PUGL_TIMER: {
-                if (event->timer.id == window.k_pugl_timer_id) post_redisplay = IsUpdateNeeded(window);
+                if (event->timer.id == window.k_pugl_timer_id) {
+                    post_redisplay = IsUpdateNeeded(window);
+                    if (native::PollNativeFilePicker(window)) post_redisplay = true;
+                }
                 break;
             }
 
