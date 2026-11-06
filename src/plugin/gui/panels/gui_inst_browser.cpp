@@ -320,8 +320,6 @@ static bool InstBrowserWaveformItems(GuiBuilder& builder,
                 .is_current = is_current,
                 .is_favourite = is_favourite,
                 .icons = icons,
-                .notifications = context.notifications,
-                .store = context.persistent_store,
             });
 
         if (is_current) ScrollBrowserToShowCurrent(builder, common_state, item.box);
@@ -452,8 +450,6 @@ static void InstBrowserItems(GuiBuilder& builder, InstBrowserContext& context, I
                         dyn::Emplace(result, lib_icon);
                         result;
                     }),
-                    .notifications = context.notifications,
-                    .store = context.persistent_store,
                 });
 
             if (is_current) ScrollBrowserToShowCurrent(builder, common_state, item.box);

@@ -15,7 +15,6 @@
 #include "gui/elements/gui_element_drawing.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/elements/gui_popup_menu.hpp"
-#include "gui/overlays/gui_tips.hpp"
 #include "gui_framework/fonts.hpp"
 #include "gui_framework/gui_frame.hpp"
 #include "gui_framework/gui_imgui.hpp"
@@ -563,13 +562,6 @@ DoBrowserItem(GuiBuilder& builder, CommonBrowserState& state, BrowserItemOptions
                                       });
 
         if (options.is_current) DrawLocateFlash(builder, item);
-    }
-
-    if (item.button_fired) {
-        ShowTipIfNeeded(options.notifications,
-                        options.store,
-                        0xe9bdfea0aae12dce,
-                        "Double-click to load and close; single-click to load only."_s);
     }
 
     if (options.is_default) {

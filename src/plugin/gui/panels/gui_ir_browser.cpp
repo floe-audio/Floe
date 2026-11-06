@@ -279,8 +279,6 @@ void IrBrowserItems(GuiBuilder& builder, IrBrowserContext& context, IrBrowserSta
                                       dyn::Emplace(result, lib_icon);
                                       result;
                                   }),
-                                  .notifications = context.notifications,
-                                  .store = context.persistent_store,
                               });
 
             if (is_current) ScrollBrowserToShowCurrent(builder, state.common_state, item.box);

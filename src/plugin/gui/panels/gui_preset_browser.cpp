@@ -611,8 +611,6 @@ void PresetBrowserItems(GuiBuilder& builder, PresetBrowserContext& context, Pres
 
                         icons;
                     }),
-                    .notifications = context.notifications,
-                    .store = context.persistent_store,
                 });
 
             // Right-click menu.

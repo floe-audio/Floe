@@ -843,8 +843,6 @@ struct BrowserItemOptions {
     bool is_default; // Shown with a marker; only presets use this.
     bool is_tab_item; // Is a point where pressing Tab jumps to.
     DynamicArrayBounded<ItemIcon, k_num_layers + 2> icons;
-    Notifications& notifications;
-    persistent_store::Store& store;
 };
 
 struct BrowserItemResult {
