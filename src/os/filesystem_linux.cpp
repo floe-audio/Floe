@@ -295,8 +295,10 @@ ErrorCodeOr<String> TrashFileOrDirectory(String path, Allocator& allocator) {
             // a removable device, etc.) A delay instead of a quick “delete” operation can be unpleasant to
             // users."
 
-            // Copy to a temp file first in case something goes wrong during the copy.
-            auto const temp_dir = (String)TRY(TemporaryDirectoryOnSameFilesystemAs(path, temp_path_arena));
+            // Copy to a temp file first in case something goes wrong during the copy. It must be on the
+            // trash's filesystem so the final rename into the trash is atomic.
+            auto const temp_dir =
+                (String)TRY(TemporaryDirectoryOnSameFilesystemAs(files_dir, temp_path_arena));
             DEFER {
                 auto _ =
                     Delete(temp_dir,

@@ -1704,6 +1704,51 @@ TEST_CASE(TestFilesystemApi) {
             auto const trashed_folder = o.Value();
             tester.log.Debug("Folder in trash: {}", trashed_folder);
         }
+
+        // /dev/shm is tmpfs, so typically a different filesystem from the home trash.
+        if constexpr (IS_LINUX) {
+            SUBCASE("from a different filesystem") {
+                auto const shm_type = GetFileType("/dev/shm"_s);
+                if (shm_type.HasError() || shm_type.Value() != FileType::Directory) {
+                    tester.log.Info("/dev/shm not available, skipping test");
+                    return k_success;
+                }
+
+                auto const unique_name = path::Filename(tests::TempFilename(tester));
+
+                SUBCASE("file") {
+                    auto const filename =
+                        (String)path::Join(tester.scratch_arena, Array {"/dev/shm"_s, unique_name});
+                    TRY(WriteFile(filename, "data"_s));
+                    auto const o = TrashFileOrDirectory(filename, tester.scratch_arena);
+                    if (o.HasError() && o.Error() == FilesystemError::NotSupported) {
+                        tester.log.Info("Trash not supported, skipping test");
+                        return k_success;
+                    }
+                    auto const trashed_file = o.Value();
+                    CHECK(GetFileType(filename).HasError());
+                    CHECK_EQ(TRY(ReadEntireFile(trashed_file, tester.scratch_arena)), "data"_s);
+                }
+
+                SUBCASE("folder") {
+                    auto const folder =
+                        (String)path::Join(tester.scratch_arena, Array {"/dev/shm"_s, unique_name});
+                    TRY(CreateDirectory(folder, {.create_intermediate_directories = false}));
+                    auto const subfile = path::Join(tester.scratch_arena, Array {folder, "subfile.txt"});
+                    TRY(WriteFile(subfile, "data"_s));
+                    auto const o = TrashFileOrDirectory(folder, tester.scratch_arena);
+                    if (o.HasError() && o.Error() == FilesystemError::NotSupported) {
+                        tester.log.Info("Trash not supported, skipping test");
+                        return k_success;
+                    }
+                    auto const trashed_folder = o.Value();
+                    CHECK(GetFileType(folder).HasError());
+                    auto const trashed_subfile =
+                        path::Join(tester.scratch_arena, Array {trashed_folder, "subfile.txt"});
+                    CHECK_EQ(TRY(ReadEntireFile(trashed_subfile, tester.scratch_arena)), "data"_s);
+                }
+            }
+        }
     }
 
     return k_success;
