@@ -10,11 +10,30 @@ description: A detailed changelog of all versions of Floe
 SPDX-FileCopyrightText: 2018-2026 Sam Windell
 SPDX-License-Identifier: CC-BY-SA-4.0
 
-IMPORTANT: Our release process expects this file to contain heading that exactly match the released version numbers.
+IMPORTANT: Our release process expects this file to contain headings that exactly match the released version numbers.
 For instance: 0.0.1. Don't change the headings.
 */}
 
 # Changelog
+## 2.0.5
+- Open the license file that comes with each of your libraries, from the new Library Terms of Use item in the main menu
+- Open a library's user manual from the main menu's Help item, when the library comes with one
+- Library development: add `manual_path` field to `floe.new_library`
+- Library development: add `note-end` trigger event, for release samples that follow the sustain pedal - e.g. a piano's dampers
+- Library development: allow `floe.midi_range_to_thousand_range` to convert a single velocity, e.g. `{ 64, 64 }`
+- Fix Open Folder buttons on macOS opening the folder above the one you wanted
+- GUI: make thin lines and dots clearer on very large window sizes, including voice markers, loop lines and graph curves
+- Fix library and preset scanning failing with "folder is too large" when a folder contains a symlink back to one of its parent folders
+- Fix some settings in a DAW project not taking effect until you changed them - sometimes found in Reaper
+- Fix Floe not finding Mirage libraries installed to a custom location on Windows
+- Improve some edge cases and displayed info with the Windows installer
+- Fix the Timbre knob not blending smoothly between soft and loud samples on some Instruments, where the louder sound could jump in early and the softer one linger
+- Fix mono impulse responses having a slight offset between the left and right channels, dulling the reverb's top end in mono
+- Linux: fix failing to trash files on different filesystems
+- Linux: fix copy and paste issues: copied text not pasting into some apps on Wayland, and pasted symbols such as … appearing as codes like `…`
+- Smaller downloads and installs on Windows and Linux: Floe no longer bundles its debugging information
+- Fix rare edge case crashes
+
 ## 2.0.4
 A big update with redesigned browsers, a reworked Distortion effect, a new Limiter and lots of improvements throughout. In summary:
 - Redesigned preset, Instrument and IR browsers, with a new Browse mode that gets you to a library, preset bank, folder or tag in a few clicks. See the [browsers docs](usage/browsers)
