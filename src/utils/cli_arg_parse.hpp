@@ -310,6 +310,10 @@ PUBLIC ErrorCodeOr<Span<CommandLineArg>> ParseCommandLineArgs(Writer writer,
 
         auto const type = end_of_flags ? detail::ArgType::None : detail::ClassifyArg(cur);
         if (type == detail::ArgType::None) {
+            if (cur.size == 0) {
+                TRY(fmt::FormatToWriter(writer, "Positional arguments must be non-empty\n"));
+                return error(CliError::InvalidArguments);
+            }
             dyn::Append(positionals, cur);
             ++cursor;
             continue;

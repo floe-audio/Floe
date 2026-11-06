@@ -313,6 +313,22 @@ TEST_CASE(TestParseCommandLineArgs) {
             CHECK(o.Error() == CliError::InvalidArguments);
         }
 
+        SUBCASE("empty positional is rejected") {
+            Span<String> positionals {};
+            auto const o = ParseCommandLineArgs(writer,
+                                                a,
+                                                "my-program",
+                                                Array {"file1"_s, "", "--a-arg", "v"},
+                                                k_arg_defs,
+                                                {
+                                                    .handle_help_option = false,
+                                                    .print_usage_on_error = false,
+                                                    .positionals = {.out = &positionals},
+                                                });
+            REQUIRE(o.HasError());
+            CHECK(o.Error() == CliError::InvalidArguments);
+        }
+
         SUBCASE("positionals via parse opts") {
             Span<String> positionals {};
             auto const o = ParseCommandLineArgs(writer,
