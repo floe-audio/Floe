@@ -1963,6 +1963,7 @@ TEST_CASE(TestPackageInstallation) {
     auto const preset_path =
         path::Join(tester.scratch_arena, Array {destination_folder, "presets", "sine.floe-preset"});
     {
+        REQUIRE(sample_lib_server::WaitIfLibrariesAreScanning(sample_lib_server, 30u * 1000));
         TRY(Rename(
             floe_lua_path,
             path::Join(tester.scratch_arena, Array {*path::Directory(floe_lua_path), "renamed.floe.lua"})));
@@ -2030,7 +2031,9 @@ TEST_CASE(TestPackageInstallation) {
              }));
 
     // Setup for the next tests.
-    // Modify files this time rather than just rename.
+    // Modify files this time rather than just rename. The install's own rescan may still be reading these
+    // files; on Windows, modifying them concurrently can fail the read with a sharing violation.
+    REQUIRE(sample_lib_server::WaitIfLibrariesAreScanning(sample_lib_server, 30u * 1000));
     TRY(AppendFile(floe_lua_path, "\n"));
 
     // Tell the server to rescan so it notices the changes. It probably does this automatically via
