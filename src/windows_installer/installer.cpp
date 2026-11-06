@@ -192,11 +192,7 @@ static void TryInstallUninstaller(u64& seed) {
         auto const file_data =
             TRY_OR(GetResource(UNINSTALLER_RESOURCE_ID), Panic("Failed to load uninstaller"));
         TRY_OR(WriteFileViaRename(uninstaller_exe_path, file_data, seed, arena), {
-            ReportError(ErrorLevel::Warning,
-                        k_nullopt,
-                        "Failed to install uninstaller '{}': {}",
-                        uninstaller_exe_path,
-                        error);
+            ReportError(ErrorLevel::Warning, k_nullopt, "Failed to install uninstaller: {}", error);
             return;
         });
     }
@@ -374,8 +370,8 @@ Application* CreateApplication(GuiFramework& framework, u32 root_layout_id) {
         if (error_buffer.size)
             ReportError(ErrorLevel::Error,
                         k_nullopt,
-                        "Failed to get install directory {}: {}",
-                        app->components[i].install_dir,
+                        "Failed to get install directory for {}: {}",
+                        info.name,
                         error_buffer);
 
         switch ((ComponentTypes)i) {

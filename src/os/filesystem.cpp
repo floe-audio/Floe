@@ -107,7 +107,7 @@ MutableString KnownDirectoryWithSubdirectories(Allocator& a,
             if (o.HasError() && options.error_log) {
                 auto _ = fmt::FormatToWriter(*options.error_log,
                                              "Failed to create directory '{}': {}\n",
-                                             dir,
+                                             path::Filename(dir),
                                              o.Error());
             }
         }
@@ -168,7 +168,7 @@ MutableString FloeKnownDirectory(Allocator& a,
                 if (o.HasError() && options.error_log) {
                     auto _ = fmt::FormatToWriter(*options.error_log,
                                                  "Failed to create directory '{}': {}\n",
-                                                 dir,
+                                                 path::Filename(dir),
                                                  o.Error());
                 }
             }

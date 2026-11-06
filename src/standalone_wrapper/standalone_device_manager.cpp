@@ -450,7 +450,7 @@ static Optional<String> StorePath(ArenaAllocator& arena) {
     if (error_log.size) {
         ReportError(ErrorLevel::Warning,
                     HashFnv1a("persistent store path"),
-                    "Failed to get standalone persistent store {}\n{}",
+                    "Failed to get standalone persistent store\n{}",
                     error_log);
         return k_nullopt;
     }

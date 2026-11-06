@@ -645,7 +645,7 @@ MutableString KnownDirectory(Allocator& a, KnownDirectoryType type, KnownDirecto
                     if (options.error_log)
                         auto _ = fmt::FormatToWriter(*options.error_log,
                                                      "Failed to create directory '{}': {}\n",
-                                                     result,
+                                                     path::Filename(result),
                                                      o.Error());
                 }
             }
@@ -692,7 +692,7 @@ MutableString KnownDirectory(Allocator& a, KnownDirectoryType type, KnownDirecto
         if (o.HasError() && options.error_log)
             auto _ = fmt::FormatToWriter(*options.error_log,
                                          "Failed to create directory '{}': {}\n",
-                                         result,
+                                         path::Filename(result),
                                          o.Error());
     }
     return result;

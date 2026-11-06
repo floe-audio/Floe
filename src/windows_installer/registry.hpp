@@ -159,6 +159,6 @@ PUBLIC void RemoveFileOnReboot(String path, ArenaAllocator& arena) {
         ReportError(ErrorLevel::Warning,
                     k_nullopt,
                     "Failed to schedule file for deletion on reboot: {}: {}",
-                    path,
+                    path::Filename(path),
                     Win32ErrorCode(GetLastError()));
 }

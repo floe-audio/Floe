@@ -485,10 +485,8 @@ MutableString KnownDirectory(Allocator& a, KnownDirectoryType type, KnownDirecto
                 auto const err = GetLastError();
                 if (err != ERROR_ALREADY_EXISTS) {
                     if (options.error_log) {
-                        PathArena temp_path_arena {Malloc::Instance()};
                         auto _ = fmt::FormatToWriter(*options.error_log,
-                                                     "Failed to create directory '{}': {}",
-                                                     Narrow(temp_path_arena, wide_path),
+                                                     "Failed to create temp directory: {}",
                                                      FilesystemWin32ErrorCode(err, "CreateDirectoryW"));
                     }
                 }
@@ -674,7 +672,7 @@ MutableString KnownDirectory(Allocator& a, KnownDirectoryType type, KnownDirecto
                         if (options.error_log) {
                             auto _ = fmt::FormatToWriter(*options.error_log,
                                                          "Failed to create directory '{}': {}",
-                                                         Narrow(temp_path_arena, wide_result),
+                                                         Narrow(temp_path_arena, subfolder),
                                                          FilesystemWin32ErrorCode(err, "CreateDirectoryW"));
                         }
                     }

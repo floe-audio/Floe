@@ -18,8 +18,7 @@ static Span<String> PossiblePrefFilePaths(ArenaAllocator& arena) {
         if (error_log.size) {
             ReportError(ErrorLevel::Warning,
                         SourceLocationHash(),
-                        "Failed to get known preferences directory {}\n{}",
-                        Last(result),
+                        "Failed to get known preferences directory\n{}",
                         error_log);
         }
     }
