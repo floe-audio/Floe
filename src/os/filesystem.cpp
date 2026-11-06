@@ -1716,6 +1716,23 @@ TEST_CASE(TestFilesystemApi) {
 
                 auto const unique_name = path::Filename(tests::TempFilename(tester));
 
+                // We expect the trash at the top of /dev/shm rather than a copy into the home trash. The
+                // .trashinfo Path must be relative to /dev/shm.
+                auto const check_top_directory_trash = [&](String trashed_path) {
+                    auto const trash_dir = *path::Directory(*path::Directory(trashed_path));
+                    CHECK(path::IsWithinDirectory(trash_dir, "/dev/shm"_s));
+                    auto const info_path = fmt::Format(tester.scratch_arena,
+                                                       "{}/info/{}.trashinfo",
+                                                       trash_dir,
+                                                       path::Filename(trashed_path));
+                    DEFER { auto _ = Delete(info_path, {}); };
+                    auto const info = ReadEntireFile(info_path, tester.scratch_arena);
+                    CHECK(info.HasValue());
+                    if (info.HasValue())
+                        CHECK(ContainsSpan(info.Value(),
+                                           fmt::Format(tester.scratch_arena, "\nPath={}\n", unique_name)));
+                };
+
                 SUBCASE("file") {
                     auto const filename =
                         (String)path::Join(tester.scratch_arena, Array {"/dev/shm"_s, unique_name});
@@ -1726,8 +1743,10 @@ TEST_CASE(TestFilesystemApi) {
                         return k_success;
                     }
                     auto const trashed_file = o.Value();
+                    DEFER { auto _ = Delete(trashed_file, {}); };
                     CHECK(GetFileType(filename).HasError());
                     CHECK_EQ(TRY(ReadEntireFile(trashed_file, tester.scratch_arena)), "data"_s);
+                    check_top_directory_trash(trashed_file);
                 }
 
                 SUBCASE("folder") {
@@ -1742,7 +1761,11 @@ TEST_CASE(TestFilesystemApi) {
                         return k_success;
                     }
                     auto const trashed_folder = o.Value();
+                    DEFER {
+                        auto _ = Delete(trashed_folder, {.type = DeleteOptions::Type::DirectoryRecursively});
+                    };
                     CHECK(GetFileType(folder).HasError());
+                    check_top_directory_trash(trashed_folder);
                     auto const trashed_subfile =
                         path::Join(tester.scratch_arena, Array {trashed_folder, "subfile.txt"});
                     CHECK_EQ(TRY(ReadEntireFile(trashed_subfile, tester.scratch_arena)), "data"_s);

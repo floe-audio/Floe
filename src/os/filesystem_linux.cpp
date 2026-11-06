@@ -166,23 +166,73 @@ static Optional<String> TrashDir(ArenaAllocator& arena) {
 
 // We follow Trash Specification v1.0.
 // https://cgit.freedesktop.org/xdg/xdg-specs/tree/trash/index.rst
-ErrorCodeOr<String> TrashFileOrDirectory(String path, Allocator& allocator) {
-    ASSERT(path.size);
-    ASSERT(path::IsAbsolute(path));
 
+// "Top directory, $topdir — the directory where a file system is mounted."
+// We walk up from a directory until the parent is on a different device.
+static ErrorCodeOr<String> TopDirectory(String dir, dev_t device, ArenaAllocator& arena) {
+    while (true) {
+        auto const parent = path::Directory(dir);
+        if (!parent) return dir;
+        struct ::stat info;
+        if (::stat(NullTerminated(*parent, arena), &info) != 0) return FilesystemErrnoErrorCode(errno);
+        if (info.st_dev != device) return dir;
+        dir = *parent;
+    }
+}
+
+static ErrorCodeOr<String> TopDirectoryTrashDir(String topdir, ArenaAllocator& arena) {
+    auto const uid = getuid();
+
+    // "When trashing a file, if this directory does not exist for the current user, the implementation MUST
+    // immediately create it, without any warnings or delays for the user."
+    auto const create_user_trash_dir = [&](String dir) -> ErrorCodeOr<String> {
+        auto const dir_nt = NullTerminated(dir, arena);
+        if (mkdir(dir_nt, 0700) != 0 && errno != EEXIST) return FilesystemErrnoErrorCode(errno);
+
+        // Someone else could have created it, or made it a symlink.
+        struct ::stat info;
+        if (lstat(dir_nt, &info) != 0) return FilesystemErrnoErrorCode(errno);
+        if (!S_ISDIR(info.st_mode) || info.st_uid != uid) return ErrorCode {FilesystemError::AccessDenied};
+        return dir;
+    };
+
+    // "(1) An administrator can create an $topdir/.Trash directory. [...] the “sticky bit” in the permissions
+    // must be set [...] The implementation also MUST check that this directory is not a symbolic link."
+    {
+        auto const admin_trash_dir = (String)path::Join(arena, Array {topdir, ".Trash"_s});
+        struct ::stat info;
+        if (lstat(NullTerminated(admin_trash_dir, arena), &info) == 0) {
+            if (S_ISDIR(info.st_mode) && (info.st_mode & S_ISVTX)) {
+                // "the implementation MUST, by default, fall back to method (2)" if this fails.
+                if (auto const o = create_user_trash_dir(fmt::Format(arena, "{}/{}", admin_trash_dir, uid));
+                    o.HasValue())
+                    return o.Value();
+            } else {
+                LogDebug(ModuleName::Filesystem, "ignoring a top directory .Trash that fails the checks");
+            }
+        }
+    }
+
+    // "(2) If an $topdir/.Trash directory is absent, an $topdir/.Trash-$uid directory is to be used as the
+    // user's trash directory for this device/partition."
+    return create_user_trash_dir(fmt::Format(arena, "{}/.Trash-{}", topdir, uid));
+}
+
+struct TrashLocation {
+    String trash_dir;
+    // Absolute for the home trash. For a top directory trash it's relative to $topdir: "The system SHOULD
+    // support absolute pathnames only in the “home trash” directory, not in the directories under $topdir."
+    String trashinfo_path;
+    bool allow_copy_from_other_filesystem;
+};
+
+static ErrorCodeOr<String> TrashInto(String path, TrashLocation location, Allocator& allocator) {
     PathArena temp_path_arena {Malloc::Instance()};
 
-    auto const trash_dir = TrashDir(temp_path_arena);
-    if (!trash_dir) return ErrorCode {FilesystemError::NotSupported};
-
     // "A trash directory contains two subdirectories, named **info** and **files**."
-    auto const files_dir = (String)path::Join(temp_path_arena, Array {*trash_dir, "files"_s});
-    auto const info_dir = (String)path::Join(temp_path_arena, Array {*trash_dir, "info"_s});
+    auto const files_dir = (String)path::Join(temp_path_arena, Array {location.trash_dir, "files"_s});
+    auto const info_dir = (String)path::Join(temp_path_arena, Array {location.trash_dir, "info"_s});
 
-    // "A “home trash” directory SHOULD be automatically created for any new user. If this directory is needed
-    // for a trashing operation but does not exist, the implementation SHOULD automatically create it, without
-    // any warnings or delays."
-    TRY(CreateDirectory(*trash_dir, {.create_intermediate_directories = true, .fail_if_exists = false}));
     TRY(CreateDirectory(files_dir, {.create_intermediate_directories = false, .fail_if_exists = false}));
     TRY(CreateDirectory(info_dir, {.create_intermediate_directories = false, .fail_if_exists = false}));
 
@@ -240,7 +290,7 @@ ErrorCodeOr<String> TrashFileOrDirectory(String path, Allocator& allocator) {
                 // 2396 <http://www.faqs.org/rfcs/rfc2396.html>`__, section 2).
 
                 dyn::AppendSpan(info_content, "Path="_s);
-                for (auto const c : path) {
+                for (auto const c : location.trashinfo_path) {
                     if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
                         c == '-' || c == '_' || c == '.' || c == '~' || c == '/') {
                         dyn::Append(info_content, c);
@@ -280,7 +330,8 @@ ErrorCodeOr<String> TrashFileOrDirectory(String path, Allocator& allocator) {
                 if (!success) remove(info_path.data);
             };
 
-            if (errno != EXDEV) return FilesystemErrnoErrorCode(errno, "failed to move file to trash");
+            if (errno != EXDEV || !location.allow_copy_from_other_filesystem)
+                return FilesystemErrnoErrorCode(errno, "failed to move file to trash");
 
             // We take the spec-compliant approach of trying to copy the file if we can't move it due to it
             // being on a different filesystem.
@@ -367,6 +418,67 @@ ErrorCodeOr<String> TrashFileOrDirectory(String path, Allocator& allocator) {
 
     // We have tried too many times to find a unique filename.
     return ErrorCode(FilesystemError::FolderContainsTooManyFiles);
+}
+
+static ErrorCodeOr<String>
+TrashIntoTopDirectoryTrash(String path, String parent_dir, dev_t device, Allocator& allocator) {
+    PathArena temp_path_arena {Malloc::Instance()};
+
+    auto const topdir = TRY(TopDirectory(parent_dir, device, temp_path_arena));
+    auto const trash_dir = TRY(TopDirectoryTrashDir(topdir, temp_path_arena));
+
+    auto const relative_path = ({
+        ASSERT(topdir == "/"_s || path::IsWithinDirectory(path, topdir));
+        path.SubSpan(topdir == "/"_s ? 1 : topdir.size + 1);
+    });
+
+    return TrashInto(path,
+                     {
+                         .trash_dir = trash_dir,
+                         .trashinfo_path = relative_path,
+                         .allow_copy_from_other_filesystem = false,
+                     },
+                     allocator);
+}
+
+ErrorCodeOr<String> TrashFileOrDirectory(String path, Allocator& allocator) {
+    ASSERT(path.size);
+    ASSERT(path::IsAbsolute(path));
+
+    PathArena temp_path_arena {Malloc::Instance()};
+
+    auto const home_trash_dir = TrashDir(temp_path_arena);
+    if (!home_trash_dir) return ErrorCode {FilesystemError::NotSupported};
+
+    // "A “home trash” directory SHOULD be automatically created for any new user. If this directory is needed
+    // for a trashing operation but does not exist, the implementation SHOULD automatically create it, without
+    // any warnings or delays."
+    TRY(CreateDirectory(*home_trash_dir, {.create_intermediate_directories = true, .fail_if_exists = false}));
+
+    // "Files that the user trashes from the same file system (device/partition) SHOULD be stored here". For
+    // other filesystems we prefer the top directory trash because it's a quick rename rather than a copy. If
+    // that's not possible, we fall back to copying into the home trash.
+    if (auto const parent_dir = path::Directory(path)) {
+        struct ::stat parent_info;
+        struct ::stat home_trash_info;
+        if (::stat(NullTerminated(*parent_dir, temp_path_arena), &parent_info) == 0 &&
+            ::stat(NullTerminated(*home_trash_dir, temp_path_arena), &home_trash_info) == 0 &&
+            parent_info.st_dev != home_trash_info.st_dev) {
+            auto const o = TrashIntoTopDirectoryTrash(path, *parent_dir, parent_info.st_dev, allocator);
+            if (o.HasValue()) return o.Value();
+            LogDebug(ModuleName::Filesystem,
+                     "top directory trash failed, falling back to home trash: {}",
+                     o.Error());
+        }
+    }
+
+    return TrashInto(path,
+                     {
+                         .trash_dir = *home_trash_dir,
+                         .trashinfo_path = path,
+                         .allow_copy_from_other_filesystem = true,
+                     },
+                     allocator);
 }
 
 ErrorCodeOr<void> Delete(String path, DeleteOptions options) {
