@@ -275,9 +275,12 @@ static void SwitchPage(Application& app, GuiFramework& framework, Pages page) {
                                 app.components[comp_index].info.filename,
                                 app.components[comp_index].install_dir,
                                 result.Error());
-                    if (result.Error() == FilesystemError::AccessDenied ||
-                        result.Error() == FilesystemError::UsedByAnotherProcess)
+                    if (result.Error() == FilesystemError::UsedByAnotherProcess)
                         fmt::Append(summary_text, "\nTry closing your DAW and trying again.");
+                    else if (result.Error() == FilesystemError::AccessDenied)
+                        fmt::Append(
+                            summary_text,
+                            "\nTry closing your DAW and trying again. If it still fails, security software may be blocking the installer: check your antivirus, and if Windows Security's Controlled Folder Access is on, allow the installer through it.");
                 }
                 dyn::AppendSpan(summary_text, "\n\n");
             }
