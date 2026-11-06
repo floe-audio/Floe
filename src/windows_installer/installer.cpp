@@ -126,6 +126,39 @@ WriteFileViaRename(String dest_path, Span<u8 const> data, u64& seed, ArenaAlloca
     });
 }
 
+// Error reports don't include paths, so we describe the state of the install location instead.
+static String DescribeInstallFolderState(String folder, ArenaAllocator& arena) {
+    auto const wide_folder =
+        TRY_OR(path::MakePathForWin32(folder, arena, true), return "invalid path"_s).path;
+    auto const attributes = GetFileAttributesW(wide_folder.data);
+    if (attributes == INVALID_FILE_ATTRIBUTES)
+        return fmt::Format(arena, "missing: {u}", Win32ErrorCode(GetLastError()));
+    if (!(attributes & FILE_ATTRIBUTE_DIRECTORY)) return "not a folder"_s;
+    if (!(attributes & FILE_ATTRIBUTE_REPARSE_POINT)) return "exists"_s;
+
+    // A junction or symlink: check that its target can be reached.
+    auto const handle = CreateFileW(wide_folder.data,
+                                    0,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    nullptr,
+                                    OPEN_EXISTING,
+                                    FILE_FLAG_BACKUP_SEMANTICS,
+                                    nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+        return fmt::Format(arena, "link with unreachable target: {u}", Win32ErrorCode(GetLastError()));
+    CloseHandle(handle);
+    return "link"_s;
+}
+
+static String DescribeExistingFileState(String file, ArenaAllocator& arena) {
+    auto const wide_file = TRY_OR(path::MakePathForWin32(file, arena, true), return "invalid path"_s).path;
+    auto const attributes = GetFileAttributesW(wide_file.data);
+    if (attributes == INVALID_FILE_ATTRIBUTES) return "none"_s;
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY) return "is a folder"_s;
+    if (attributes & FILE_ATTRIBUTE_READONLY) return "read-only"_s;
+    return "exists"_s;
+}
+
 static ErrorCodeOr<void> TryInstall(Component const& comp, u64& seed) {
     ASSERT(comp.data.size != 0);
     ASSERT(comp.info.filename.size != 0);
@@ -136,7 +169,13 @@ static ErrorCodeOr<void> TryInstall(Component const& comp, u64& seed) {
     auto const path = path::Join(arena, Array {comp.install_dir, comp.info.filename});
     TRY_OR(WriteFileViaRename(path, comp.data, seed, arena), {
         if (error != FilesystemError::UsedByAnotherProcess)
-            ReportError(ErrorLevel::Warning, k_nullopt, "Failed to install file: {}", error);
+            ReportError(ErrorLevel::Warning,
+                        k_nullopt,
+                        "Failed to install {}: {} (folder: {}, existing file: {})",
+                        comp.info.name,
+                        error,
+                        DescribeInstallFolderState(comp.install_dir, arena),
+                        DescribeExistingFileState(path, arena));
         return error;
     });
 
