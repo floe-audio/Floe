@@ -316,11 +316,11 @@ linkFarm name [
     };
   }
   {
-    name = "N-V-__8AAN4dEAARU97STYhcsp8KtZa1D3I_Laz6Nj0IWEfT";
+    name = "N-V-__8AAL8gEABjT3Kv-K9DeoGa6OqhCJ6RFEmAcCGfkIC6";
     path = fetchZigArtifact {
       name = "pugl";
-      url = "git+https://github.com/SamWindell/pugl#8a6b26e0f06ec44971faef4f2319a4644067fab1";
-      hash = "sha256-fuv1PT53IZzcSstOkEeW0Lr+4HjLHDUuS2wDRdEvcEI=";
+      url = "git+https://github.com/SamWindell/pugl#454e02d1dfb9c4ed4cff31300b9711691760b2b9";
+      hash = "sha256-EiAQNlDKEaaD2DqlyVpGLbg8kXnxNHFkQtUVUSnujEA=";
       unpack = true;
     };
   }
