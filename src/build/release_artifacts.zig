@@ -14,6 +14,7 @@ const use_rcodesign = true;
 pub const Artifact = struct {
     path: std.Build.LazyPath,
     out_filename: []const u8,
+    debug_symbols: []const configure_binaries.DebugSymbols = &.{},
 };
 
 pub const Artifacts = struct {
@@ -43,6 +44,29 @@ pub fn makeRelease(
     });
 
     const release_dir = "release";
+
+    // Debug symbols for everything we release. These are uploaded to Sentry rather than distributed.
+    {
+        const debug_symbols_dir = b.fmt("debug-symbols{c}{s}", .{ std.fs.path.sep, target_triple.constSlice() });
+        var all_debug_symbols = std.ArrayList(configure_binaries.DebugSymbols).init(b.allocator);
+        for ([_]?Artifact{ args.windows_installer, args.packager, args.library_inspector }) |artifact|
+            if (artifact) |a| all_debug_symbols.appendSlice(a.debug_symbols) catch @panic("OOM");
+        for ([_]?configure_binaries.ConfiguredPlugin{ args.au, args.vst3, args.clap }) |plugin|
+            if (plugin) |p| if (p.debug_symbols) |d| all_debug_symbols.append(d) catch @panic("OOM");
+
+        for (all_debug_symbols.items) |debug_symbols| {
+            const dest = b.pathJoin(&.{ debug_symbols_dir, debug_symbols.name });
+            if (debug_symbols.is_dir) {
+                step.dependOn(&b.addInstallDirectory(.{
+                    .source_dir = debug_symbols.path,
+                    .install_dir = .prefix,
+                    .install_subdir = dest,
+                }).step);
+            } else {
+                step.dependOn(&b.addInstallFile(debug_symbols.path, dest).step);
+            }
+        }
+    }
 
     switch (target.os.tag) {
         .windows => {

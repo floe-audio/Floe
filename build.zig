@@ -188,8 +188,12 @@ const FlagsBuilder = struct {
         // Include dwarf debug info, even on windows. This means we can use the Zig/libbacktraceeverywhere to get
         // really good stack traces.
         //
+        // Production binaries don't carry debug info: it's uploaded to Sentry, which symbolicates for us. On
+        // Windows, the PDB is all Sentry needs, so we don't embed DWARF.
+        //
         // We use DWARF 4 because Zig has a problem with version 5: https://github.com/ziglang/zig/issues/23732
-        try self.flags.append("-gdwarf-4");
+        if (!(ctx.build_mode == .production and cfg.target.os.tag == .windows))
+            try self.flags.append("-gdwarf-4");
 
         if (ctx.optimise != .ReleaseFast) {
             if (options.ubsan) {
@@ -271,6 +275,9 @@ fn applyUniversalSettings(
     // Dwarf parser (InvalidDebugInfo). We've previously had issues on macOS too. So we disable it for now.
     step.want_lto = false;
     step.rdynamic = true;
+
+    // Sentry identifies ELF debug info by build ID. sha1 rather than uuid keeps builds reproducible.
+    if (ctx.build_mode == .production and step.rootModuleTarget().os.tag == .linux) step.build_id = .sha1;
     step.linkLibC();
 
     step.addIncludePath(ctx.dep_xxhash.path(""));
@@ -3051,6 +3058,15 @@ fn buildBenchmarks(ctx: *const BuildContext, cfg: *const TargetConfig, deps: str
     return exe;
 }
 
+fn debugSymbolsSlice(
+    b: *std.Build,
+    maybe_debug_symbols: []const ?configure_binaries.DebugSymbols,
+) []const configure_binaries.DebugSymbols {
+    var result = std.ArrayList(configure_binaries.DebugSymbols).init(b.allocator);
+    for (maybe_debug_symbols) |d| if (d) |debug_symbols| result.append(debug_symbols) catch @panic("OOM");
+    return result.items;
+}
+
 fn doTarget(
     ctx: *BuildContext,
     cfg: *const TargetConfig,
@@ -3125,12 +3141,14 @@ fn doTarget(
         const installed = configure_binaries.installProcessedExecutable(
             exe,
             .{ .description = "Floe Packager" },
+            ctx.build_mode == .production,
         );
         top_level_steps.install_bin.dependOn(installed.step);
 
         break :blk release_artifacts.Artifact{
             .out_filename = exe.out_filename,
             .path = installed.path,
+            .debug_symbols = debugSymbolsSlice(ctx.b, &.{installed.debug_symbols}),
         };
     };
 
@@ -3139,7 +3157,7 @@ fn doTarget(
             .common_infrastructure = common_infrastructure,
         });
 
-        const installed = configure_binaries.installProcessedExecutable(exe, null);
+        const installed = configure_binaries.installProcessedExecutable(exe, null, false);
         top_level_steps.install_bin.dependOn(installed.step);
     }
 
@@ -3149,7 +3167,7 @@ fn doTarget(
             .embedded_files = embedded_files,
         });
 
-        const installed = configure_binaries.installProcessedExecutable(exe, null);
+        const installed = configure_binaries.installProcessedExecutable(exe, null, false);
         top_level_steps.install_bin.dependOn(installed.step);
 
         // IMPROVE: export preset-tool as a production artifact?
@@ -3163,12 +3181,14 @@ fn doTarget(
         const installed = configure_binaries.installProcessedExecutable(
             exe,
             .{ .description = "Floe Library Inspector" },
+            ctx.build_mode == .production,
         );
         top_level_steps.install_bin.dependOn(installed.step);
 
         break :blk release_artifacts.Artifact{
             .out_filename = exe.out_filename,
             .path = installed.path,
+            .debug_symbols = debugSymbolsSlice(ctx.b, &.{installed.debug_symbols}),
         };
     };
 
@@ -3181,6 +3201,7 @@ fn doTarget(
                 .clap,
                 dso,
                 configure_binaries.CodesignInfo{ .description = "Floe CLAP Plugin" },
+                ctx.build_mode == .production,
             );
             top_level_steps.install_plugins.dependOn(clap.install_step);
             top_level_steps.install_clap.dependOn(clap.install_step);
@@ -3196,7 +3217,7 @@ fn doTarget(
     {
         const exe = buildStandalone(ctx, cfg, .{ .plugin = plugin });
 
-        const installed = configure_binaries.installProcessedExecutable(exe, null);
+        const installed = configure_binaries.installProcessedExecutable(exe, null, false);
         top_level_steps.install_bin.dependOn(installed.step);
 
         if (targetCanRunNatively(cfg.target)) doc_screenshots: {
@@ -3372,6 +3393,7 @@ fn doTarget(
                 .vst3,
                 dso,
                 configure_binaries.CodesignInfo{ .description = "Floe VST3 Plugin" },
+                ctx.build_mode == .production,
             );
             top_level_steps.install_plugins.dependOn(vst3.install_step);
             top_level_steps.install_all.dependOn(vst3.install_step);
@@ -3401,7 +3423,7 @@ fn doTarget(
         if (cfg.target.os.tag == .macos and !options.sanitize_thread) {
             const dso = buildAu(ctx, cfg, .{ .plugin = plugin });
 
-            const au = configure_binaries.addConfiguredPlugin(ctx.b, .au, dso, null);
+            const au = configure_binaries.addConfiguredPlugin(ctx.b, .au, dso, null, ctx.build_mode == .production);
             top_level_steps.install_plugins.dependOn(au.install_step);
             top_level_steps.install_all.dependOn(au.install_step);
 
@@ -3499,6 +3521,11 @@ fn doTarget(
                 break :blk2 .{
                     .step = exe,
                     .codesigned_path = codesigned_exe,
+                    .debug_symbols = configure_binaries.splitDebugSymbols(
+                        exe,
+                        exe.out_filename,
+                        ctx.build_mode == .production,
+                    ).debug_symbols,
                 };
             };
 
@@ -3547,6 +3574,14 @@ fn doTarget(
             break :blk release_artifacts.Artifact{
                 .out_filename = installer.out_filename,
                 .path = codesigned_path,
+                .debug_symbols = debugSymbolsSlice(ctx.b, &.{
+                    configure_binaries.splitDebugSymbols(
+                        installer,
+                        installer.out_filename,
+                        ctx.build_mode == .production,
+                    ).debug_symbols,
+                    uninstaller.debug_symbols,
+                }),
             };
         } else {
             top_level_steps.test_windows_install.dependOn(

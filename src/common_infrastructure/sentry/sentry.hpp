@@ -129,6 +129,10 @@ static constexpr String k_user_agent = "floe/" FLOE_VERSION_STRING;
 // Sentry uses the fingerprint to group events into 'issues'.
 static constexpr bool k_use_custom_fingerprint = false;
 
+// Production binaries are stripped of debug info and their symbols are uploaded to Sentry separately, so we
+// send the module's identity and let Sentry symbolicate. Development binaries are symbolicated on the client.
+static constexpr bool k_send_debug_meta = PRODUCTION_BUILD;
+
 constexpr auto k_report_file_extension = "floe-report"_ca;
 
 static fmt::UuidArray Uuid(Atomic<u64>& seed) {
@@ -546,7 +550,7 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
                                             "instruction_addr",
                                             fmt::FormatInline<32>("0x{x}", frame.address)));
 
-                    if (ShouldSendFilepath(frame.filename))
+                    if (ShouldSendFilepath(frame.filename) && frame.filename != "???"_s)
                         TRY(json::WriteKeyValue(json_writer, "filename", frame.filename));
 
                     auto const in_self_module = frame.in_self_module == InSelfModule::Yes;
@@ -566,7 +570,7 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
                         if (in_self_module) HashUpdate(fingerprint, frame.column);
                     }
 
-                    if (frame.function_name.size)
+                    if (frame.function_name.size && frame.function_name != "???"_s)
                         TRY(json::WriteKeyValue(json_writer, "function", frame.function_name));
 
                     TRY(json::WriteObjectEnd(json_writer));
@@ -629,6 +633,31 @@ EnvelopeAddEvent(Sentry& sentry, EnvelopeWriter& writer, ErrorEvent event, AddEv
         TRY(json::WriteObjectEnd(json_writer));
     } else if (has_stacktrace && !event.exception) {
         TRY(write_stacktrace_object());
+    }
+
+    if (has_stacktrace && detail::k_send_debug_meta) {
+        if (auto const image = CurrentModuleImage(); image && image->debug_id.size) {
+            // https://develop.sentry.dev/sdk/data-model/event-payloads/debugmeta/
+            TRY(json::WriteKeyObjectBegin(json_writer, "debug_meta"));
+            TRY(json::WriteKeyArrayBegin(json_writer, "images"));
+            TRY(json::WriteObjectBegin(json_writer));
+            TRY(json::WriteKeyValue(json_writer, "type", image->type));
+            TRY(json::WriteKeyValue(json_writer,
+                                    "image_addr",
+                                    fmt::FormatInline<32>("0x{x}", image->image_addr)));
+            TRY(json::WriteKeyValue(json_writer, "image_size", image->image_size));
+            TRY(json::WriteKeyValue(json_writer,
+                                    "image_vmaddr",
+                                    fmt::FormatInline<32>("0x{x}", image->image_vmaddr)));
+            TRY(json::WriteKeyValue(json_writer, "debug_id", image->debug_id));
+            if (image->code_id.size) TRY(json::WriteKeyValue(json_writer, "code_id", image->code_id));
+            if (image->code_file.size) TRY(json::WriteKeyValue(json_writer, "code_file", image->code_file));
+            if (image->debug_file.size)
+                TRY(json::WriteKeyValue(json_writer, "debug_file", image->debug_file));
+            TRY(json::WriteObjectEnd(json_writer));
+            TRY(json::WriteArrayEnd(json_writer));
+            TRY(json::WriteObjectEnd(json_writer));
+        }
     }
 
     if constexpr (detail::k_use_custom_fingerprint) {

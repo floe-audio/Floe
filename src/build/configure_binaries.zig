@@ -13,6 +13,68 @@ pub const CodesignInfo = struct {
     description: []const u8,
 };
 
+pub const DebugSymbols = struct {
+    path: std.Build.LazyPath,
+    name: []const u8,
+    is_dir: bool,
+};
+
+pub const SplitBinary = struct {
+    bin: std.Build.LazyPath,
+    debug_symbols: ?DebugSymbols,
+};
+
+// When enabled, the returned binary has no debug info and the debug info is returned separately, ready for uploading
+// to Sentry. Sentry matches them using the binary's build ID (ELF), UUID (Mach-O) or PDB signature (PE).
+pub fn splitDebugSymbols(
+    compile_step: *std.Build.Step.Compile,
+    name: []const u8,
+    enabled: bool,
+) SplitBinary {
+    const b = compile_step.step.owner;
+    const bin = compile_step.getEmittedBin();
+    if (!enabled) return .{ .bin = bin, .debug_symbols = null };
+
+    switch (compile_step.rootModuleTarget().os.tag) {
+        .linux => {
+            const cmd = b.addSystemCommand(&.{ "llvm-objcopy", "--strip-debug" });
+            cmd.addFileArg(bin);
+            const stripped = cmd.addOutputFileArg(compile_step.out_filename);
+            // The unstripped binary is a valid debug companion and has the same build ID.
+            return .{
+                .bin = stripped,
+                .debug_symbols = .{ .path = bin, .name = name, .is_dir = false },
+            };
+        },
+        .macos => {
+            // Mach-O binaries never contain DWARF; instead they reference the object files. dsymutil collects that
+            // into a dSYM bundle, which must happen while the object files still exist.
+            const cmd = b.addSystemCommand(&.{"dsymutil"});
+            cmd.addFileArg(bin);
+            cmd.addArg("-o");
+            const dsym_name = b.fmt("{s}.dSYM", .{name});
+            const dsym = cmd.addOutputDirectoryArg(dsym_name);
+            return .{
+                .bin = bin,
+                .debug_symbols = .{ .path = dsym, .name = dsym_name, .is_dir = true },
+            };
+        },
+        .windows => {
+            // Production Windows builds don't embed DWARF, the PDB has everything.
+            return .{
+                .bin = bin,
+                .debug_symbols = .{
+                    .path = compile_step.getEmittedPdb(),
+                    // Matches the name the binary records for its PDB.
+                    .name = b.fmt("{s}.pdb", .{compile_step.name}),
+                    .is_dir = false,
+                },
+            };
+        },
+        else => return .{ .bin = bin, .debug_symbols = null },
+    }
+}
+
 pub fn maybeAddWindowsCodesign(
     compile_step: *std.Build.Step.Compile,
     sign_info: CodesignInfo,
@@ -106,25 +168,30 @@ pub fn maybeAddWindowsCodesign(
 pub fn maybeProcessExecutable(
     compile_step: *std.Build.Step.Compile,
     codesign: ?CodesignInfo,
-) std.Build.LazyPath {
-    return switch (compile_step.rootModuleTarget().os.tag) {
-        .windows => if (codesign) |c|
-            maybeAddWindowsCodesign(compile_step, c)
-        else
-            compile_step.getEmittedBin(),
-        else => compile_step.getEmittedBin(),
+    split_debug_symbols: bool,
+) SplitBinary {
+    const split = splitDebugSymbols(compile_step, compile_step.out_filename, split_debug_symbols);
+    return .{
+        .bin = switch (compile_step.rootModuleTarget().os.tag) {
+            .windows => if (codesign) |c| maybeAddWindowsCodesign(compile_step, c) else split.bin,
+            else => split.bin,
+        },
+        .debug_symbols = split.debug_symbols,
     };
 }
 
 pub fn installProcessedExecutable(
     compile_step: *std.Build.Step.Compile,
     codesign: ?CodesignInfo,
+    split_debug_symbols: bool,
 ) struct {
     step: *std.Build.Step,
     path: std.Build.LazyPath,
+    debug_symbols: ?DebugSymbols,
 } {
     const b = compile_step.step.owner;
-    const processed = maybeProcessExecutable(compile_step, codesign);
+    const processed_split = maybeProcessExecutable(compile_step, codesign, split_debug_symbols);
+    const processed = processed_split.bin;
     const install = b.addInstallBinFile(processed, compile_step.out_filename);
     if (compile_step.producesPdbFile()) {
         const pdb_install = b.addInstallBinFile(
@@ -133,7 +200,7 @@ pub fn installProcessedExecutable(
         );
         install.step.dependOn(&pdb_install.step);
     }
-    return .{ .step = &install.step, .path = processed };
+    return .{ .step = &install.step, .path = processed, .debug_symbols = processed_split.debug_symbols };
 }
 
 pub const ConfiguredPlugin = struct {
@@ -141,6 +208,7 @@ pub const ConfiguredPlugin = struct {
     file_name: []const u8,
     is_dir: bool, // Whether the plugin_path is a directory.
     install_step: *std.Build.Step, // Step that installs the plugin to the install prefix.
+    debug_symbols: ?DebugSymbols,
 
     pub fn addToRunStepArgsWithPrefix(
         self: *const ConfiguredPlugin,
@@ -166,17 +234,19 @@ pub fn addConfiguredPlugin(
     plugin_type: PluginType,
     compile_step: *std.Build.Step.Compile,
     codesign: ?CodesignInfo,
+    split_debug_symbols: bool,
 ) ConfiguredPlugin {
     switch (compile_step.rootModuleTarget().os.tag) {
         .linux => {
-            const path = compile_step.getEmittedBin();
-
             // Path to the actual plugin (whether a binary or a bundle folder).
             const plugin_path = switch (plugin_type) {
                 .vst3 => "Floe.vst3",
                 .clap => "Floe.clap",
                 .au => @panic("AU not supported on Linux"),
             };
+
+            const split = splitDebugSymbols(compile_step, plugin_path, split_debug_symbols);
+            const path = split.bin;
 
             var is_dir: bool = false;
 
@@ -228,6 +298,7 @@ pub fn addConfiguredPlugin(
                 .file_name = plugin_path,
                 .is_dir = is_dir,
                 .install_step = install_step,
+                .debug_symbols = split.debug_symbols,
             };
         },
         .windows => {
@@ -240,6 +311,8 @@ pub fn addConfiguredPlugin(
                 .clap => "Floe.clap",
                 .au => @panic("AU not supported on Windows"),
             };
+
+            const split = splitDebugSymbols(compile_step, plugin_path, split_debug_symbols);
 
             const result_path = b.addWriteFiles().addCopyFile(path, plugin_path);
 
@@ -262,6 +335,7 @@ pub fn addConfiguredPlugin(
                 .file_name = plugin_path,
                 .is_dir = false,
                 .install_step = install,
+                .debug_symbols = split.debug_symbols,
             };
         },
         .macos => {
@@ -280,17 +354,14 @@ pub fn addConfiguredPlugin(
 
             var result_path: std.Build.LazyPath = undefined;
 
+            const split = splitDebugSymbols(compile_step, install_path, split_debug_symbols);
+
             // Binary
             {
                 result_path = write.addCopyFile(
-                    compile_step.getEmittedBin(),
+                    split.bin,
                     b.fmt("{s}/Contents/MacOS/Floe", .{install_path}),
                 );
-
-                // Generate dSYM for debugging.
-                // NOTE(Sam): does this need a dependsOn?
-                const cmd = b.addSystemCommand(&.{"dsymutil"});
-                cmd.addFileArg(result_path);
 
                 // The result points to the binary, for plugins, we want it to point to the bundle since that's
                 // what hosts/validators use.
@@ -430,6 +501,7 @@ pub fn addConfiguredPlugin(
                 .file_name = install_path,
                 .is_dir = true,
                 .install_step = install,
+                .debug_symbols = split.debug_symbols,
             };
         },
         else => @panic("unsupported OS"),

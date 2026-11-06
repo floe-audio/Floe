@@ -92,6 +92,20 @@ ErrorCodeOr<void> WriteCurrentStacktrace(Writer writer,
 InSelfModule HasAddressesInCurrentModule(Span<uintptr const> addresses);
 InSelfModule IsAddressInCurrentModule(uintptr address);
 
+// Identity of our module as loaded in memory, enough for an external tool to symbolicate our addresses using
+// separately-stored debug info. Signal-safe.
+struct ModuleImage {
+    String type; // "elf", "macho" or "pe"
+    uintptr image_addr;
+    usize image_size;
+    uintptr image_vmaddr;
+    String debug_id; // empty if unavailable
+    String code_id; // empty if unavailable
+    String code_file; // filename only
+    String debug_file; // filename only, empty if unavailable
+};
+Optional<ModuleImage> CurrentModuleImage();
+
 constexpr auto k_floe_disaster_file_extension = "floe-disaster"_ca;
 constexpr u32 k_windows_nested_panic_code = 0xF10EDEAD;
 

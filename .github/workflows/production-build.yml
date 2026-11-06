@@ -20,6 +20,7 @@ env:
   # Specify a relative path for reproducible builds (no absolute paths in binaries).
   ZIG_GLOBAL_CACHE_DIR: .zig-cache-global
   ZIG_RELEASE_FOLDER: zig-out/release
+  ZIG_DEBUG_SYMBOLS_FOLDER: zig-out/debug-symbols
 
 jobs:
   # We need a macOS system for the macOS build.
@@ -46,6 +47,12 @@ jobs:
           name: final-macos
           if-no-files-found: error
           path: ${{ env.ZIG_RELEASE_FOLDER }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debug-symbols-macos
+          if-no-files-found: error
+          path: ${{ env.ZIG_DEBUG_SYMBOLS_FOLDER }}
 
   # Windows codesigning requires signtool.exe with Azure Code Signing, so we need a Windows runner.
   build-windows:
@@ -93,6 +100,12 @@ jobs:
           if-no-files-found: error
           path: ${{ env.ZIG_RELEASE_FOLDER }}
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debug-symbols-windows
+          if-no-files-found: error
+          path: ${{ env.ZIG_DEBUG_SYMBOLS_FOLDER }}
+
   # We can do the rest on a Linux runner.
   build-linux:
     runs-on: ubuntu-22.04
@@ -112,6 +125,36 @@ jobs:
           name: final-linux
           if-no-files-found: error
           path: ${{ env.ZIG_RELEASE_FOLDER }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debug-symbols-linux
+          if-no-files-found: error
+          path: ${{ env.ZIG_DEBUG_SYMBOLS_FOLDER }}
+
+  # Production binaries don't contain debug info, Sentry uses these to symbolicate reports.
+  upload-debug-symbols:
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@main
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: debug-symbols-*
+          path: debug-symbols
+          merge-multiple: true
+
+      - run: nix develop --command sentry-cli debug-files upload --wait debug-symbols
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
   # Merge all platform artifacts into one for convenient downloading.
   collect-artifacts:

@@ -390,7 +390,8 @@ ErrorCodeCategory const g_stacktrace_error_category {
 };
 
 struct CurrentModuleInfo {
-    Optional<DynamicArrayBounded<char, 256>> failed_init_error {};
+    // If impl is null, this is why initialisation failed. Otherwise, this is why symbols are unavailable.
+    Optional<DynamicArrayBounded<char, 256>> error {};
     SelfModuleHandle impl = nullptr;
 };
 
@@ -403,25 +404,22 @@ Optional<String> InitStacktraceState() {
     CountedInit(g_init, [] {
         auto mod = PLACEMENT_NEW(g_current_module_info_storage) CurrentModuleInfo;
 
-        mod->failed_init_error.Emplace();
-        mod->impl = CreateSelfModuleInfo(mod->failed_init_error->data, mod->failed_init_error->Capacity());
-        if (mod->impl)
-            mod->failed_init_error.Clear();
-        else {
-            usize size = 0;
-            for (; size < mod->failed_init_error->Capacity(); ++size)
-                if (mod->failed_init_error->data[size] == '\0') break;
-            ASSERT(size < mod->failed_init_error->Capacity(), "not null-terminated error message");
-            mod->failed_init_error->size = size;
-        }
+        mod->error.Emplace();
+        mod->impl = CreateSelfModuleInfo(mod->error->data, mod->error->Capacity());
+        usize size = 0;
+        for (; size < mod->error->Capacity(); ++size)
+            if (mod->error->data[size] == '\0') break;
+        ASSERT(size < mod->error->Capacity(), "not null-terminated error message");
+        mod->error->size = size;
+        if (!size) mod->error.Clear();
 
         g_current_module_info.Store(mod, StoreMemoryOrder::Release);
     });
 
     auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire);
-    if (mod->failed_init_error) {
-        LogDebug(ModuleName::Global, "Failed to get debug info: {}", *mod->failed_init_error);
-        return *mod->failed_init_error;
+    if (mod->error) {
+        LogDebug(ModuleName::Global, "Failed to get debug info: {}", *mod->error);
+        if (!mod->impl) return *mod->error;
     }
     return k_nullopt;
 }
@@ -512,9 +510,9 @@ WriteStacktrace(Span<uintptr const> addresses, Writer writer, StacktracePrintOpt
         if (ctx.return_value.HasError()) return ctx.return_value;
     } else {
         TRY(writer.WriteChars("[No module info available"_s));
-        if (mod && mod->failed_init_error) {
+        if (mod && mod->error) {
             TRY(writer.WriteChars(": "));
-            TRY(writer.WriteChars(*mod->failed_init_error));
+            TRY(writer.WriteChars(*mod->error));
         }
         TRY(writer.WriteChars("]\n"));
 
@@ -548,7 +546,7 @@ void StacktraceToCallback(Span<uintptr const> addresses,
                           FunctionRef<void(FrameInfo const&)> callback,
                           StacktracePrintOptions options) {
 
-    if (auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire)) {
+    if (auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire); mod && mod->impl) {
         using CallbackType = decltype(callback);
 
         struct Context {
@@ -595,7 +593,7 @@ PrintCurrentStacktrace(StdStream stream, StacktracePrintOptions options, Stacktr
 
 InSelfModule HasAddressesInCurrentModule(Span<uintptr const> addresses) {
     auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire);
-    if (!mod || mod->failed_init_error) return InSelfModule::Unknown;
+    if (!mod || !mod->impl) return InSelfModule::Unknown;
     for (auto const address : addresses)
         if (IsAddressInCurrentModule(mod->impl, address)) return InSelfModule::Yes;
 
@@ -604,8 +602,25 @@ InSelfModule HasAddressesInCurrentModule(Span<uintptr const> addresses) {
 
 InSelfModule IsAddressInCurrentModule(usize address) {
     auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire);
-    if (!mod || mod->failed_init_error) return InSelfModule::Unknown;
+    if (!mod || !mod->impl) return InSelfModule::Unknown;
     return IsAddressInCurrentModule(mod->impl, address) ? InSelfModule::Yes : InSelfModule::No;
+}
+
+Optional<ModuleImage> CurrentModuleImage() {
+    auto const mod = g_current_module_info.Load(LoadMemoryOrder::Acquire);
+    if (!mod || !mod->impl) return k_nullopt;
+    SelfModuleImageInfo info {};
+    if (!SelfModuleImage(mod->impl, &info)) return k_nullopt;
+    return ModuleImage {
+        .type = FromNullTerminated(info.type),
+        .image_addr = info.image_addr,
+        .image_size = info.image_size,
+        .image_vmaddr = info.image_vmaddr,
+        .debug_id = FromNullTerminated(info.debug_id),
+        .code_id = FromNullTerminated(info.code_id),
+        .code_file = FromNullTerminated(info.code_file),
+        .debug_file = FromNullTerminated(info.debug_file),
+    };
 }
 
 TEST_CASE(TestHasAddressesInCurrentModule) {
@@ -622,6 +637,39 @@ TEST_CASE(TestHasAddressesInCurrentModule) {
     // This doesn't work on Windows, perhaps because we're using mingw which means it actually is in the
     // current module?
     if constexpr (!IS_WINDOWS) CHECK_EQ(IsAddressInCurrentModule((uintptr)&powf), InSelfModule::No);
+
+    return k_success;
+}
+
+TEST_CASE(TestCurrentModuleImage) {
+    auto const image = CurrentModuleImage();
+    REQUIRE(image.HasValue());
+
+    auto const expected_type = IS_WINDOWS ? "pe"_s : IS_MACOS ? "macho"_s : "elf"_s;
+    CHECK_EQ(image->type, expected_type);
+
+    auto const function_address = (uintptr)&TestCurrentModuleImage;
+    CHECK(function_address >= image->image_addr);
+    CHECK(function_address < image->image_addr + image->image_size);
+
+    CHECK(image->code_file.size);
+    CHECK(!Contains(image->code_file, '/'));
+    CHECK(!Contains(image->code_file, '\\'));
+
+    // Sentry's debug IDs are UUIDs, with a PDB age suffix on Windows.
+    if (image->debug_id.size) CHECK(image->debug_id.size >= 36);
+    if constexpr (IS_WINDOWS) CHECK(image->debug_file.size);
+
+    tester.log.Debug(
+        "{} image: addr={x} size={x} vmaddr={x} debug_id={} code_id={} code_file={} debug_file={}",
+        image->type,
+        image->image_addr,
+        image->image_size,
+        image->image_vmaddr,
+        image->debug_id,
+        image->code_id,
+        image->code_file,
+        image->debug_file);
 
     return k_success;
 }
@@ -686,5 +734,6 @@ TEST_CASE(TestStacktrace) {
 
 TEST_REGISTRATION(RegisterDebugTests) {
     REGISTER_TEST(TestHasAddressesInCurrentModule);
+    REGISTER_TEST(TestCurrentModuleImage);
     REGISTER_TEST(TestStacktrace);
 }
