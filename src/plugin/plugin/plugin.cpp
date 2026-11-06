@@ -1579,8 +1579,6 @@ static bool ClapInit(const struct clap_plugin* plugin) {
                                              StoreMemoryOrder::Relaxed);
 
             LogInfo(ModuleName::Clap, "host: {} {} {}", floe.host.vendor, floe.host.name, floe.host.version);
-
-            if constexpr (!PRODUCTION_BUILD) ReportError(ErrorLevel::Info, k_nullopt, "Floe plugin loaded"_s);
         }
 
         floe.engine.Emplace(floe.host, *g_shared_engine_systems, floe.index);
