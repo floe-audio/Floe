@@ -1,0 +1,50 @@
+# Develop Preset Banks
+
+> Best practices for developing preset banks for Floe
+
+Floe's preset management is open; it's just based on the files and folders on your computer.
+
+Presets are saved as individual files using the save button at the top of Floe's UI. These files can be freely renamed and put into subfolders; this is how categories and hierarchies are created in the preset browser.
+
+## Preset Banks
+
+A _preset bank_ is a small, optional extension to this. Add a `floe-preset-bank.ini` file to a folder of presets and it becomes a preset bank. Every preset in that folder and its subfolders is then easier to identify as part of the bank, and the bank can carry metadata such as a subtitle and ID.
+
+Creating a bank is normally a good idea for custom presets: the preset browser can isolate the bank, present it with the best name, and surface it at the top level. In the preset browser, the icon for the bank is taken from the sample library used by the bank's presets. If the bank contains presets that depend on multiple different libraries, a 'mixed' icon is shown instead to denote that the bank spans more than one library. Alternatively, you can instruct Floe using the _preset bank file_ to use the visuals from a given library ID.
+
+The _preset bank file_ is a simple INI text file with the following fields - all are optional:
+
+```
+; A short and descriptive name for the preset bank.subtitle = My Preset Bank Name; Any kind of unique identifier. Typically you might use a reverse; domain style string. Used so Floe can identify the bank uniquely.id = com.myname.mypresetbank; A revision number - just a single integer. When installing a; package, Floe can use this alongside the ID to determine if a bank; can be updated rather than installed to a new location. Revisions; are only designed for simple additions/fixes. If you make major; changes, it's probably better to create a new preset bank,; "My Bank 2", with a new ID. On the preset browser, this number will; be displayed with a 'v1.' prefix to make it clear to users that the; change is incremental and backwards-compatible.; The key `minor_version` is also accepted for this.revision = 1; The id_string of an installed sample library whose icon should; represent this bank in the preset browser. If omitted, or if the; library isn't installed, Floe falls back to deriving the icon from; the libraries used by the bank's presets.library_for_visuals = FrozenPlain - Slow; A preset within this bank, given as a path relative to the bank; folder including the file extension. When the bank is installed; from a package, Floe uses this preset as the default preset - the; one a new instance of Floe opens with. It's only a suggestion:; Floe ignores it if the user has chosen their own default preset.; If omitted, Floe uses the bank's first preset alphabetically.default_preset = Pads/Warm Welcome.floe-preset; Set to true if this bank ships with a library rather than being; user-made. The preset browser groups factory banks separately from; the user's own banks. Banks whose folder name contains; "factory presets" are treated as factory automatically, even; without this field.factory = true
+```
+
+You can create this INI file with any text editor such as Notepad or TextEdit. You just need to type in the various `field = value` with new lines between them.
+
+A side note for the particularly discerning user: Floe automatically identifies some well-known factory preset folders as preset banks even without the metadata file present. This is because some banks were created before the preset bank feature was added. We chose to enrich them with metadata retroactively.
+
+## Packaging
+
+Once you've created your folder of presets and added a `floe-preset-bank.ini` file (optional but recommended), you can package it up for distribution.
+
+Read about packaging on the [packaging](/docs/develop/packaging) page.
+
+Use the packager command-line tool, or alternatively package it manually. To manually package your bank first rename your bank folder to something like `My Preset Bank`. Next, put that into a folder called `Presets`. Next, put `Presets` into another folder `My Preset Bank - Floe Package`, then right-click and ZIP that folder. You should now have a ZIP called `My Preset Bank - Floe Package.zip` with a subfolder `Presets` and your bank folder inside that. Rename the `.zip` to `.floe-pkg`. The resulting file will contain the structure that _Floe packages_ require (Presets subfolder at the top level). Test your package by trying to install it using Floe's _Install package_ button. Refer to the packaging page for more details if needed.
+
+## Best Practices
+
+-   Make presets all feel the same volume: the master peak meter on Floe's GUI should just be the yellow zone when the preset is played at its fullest.
+-   Give each preset a unique, descriptive name suggesting its tone or usage. Don't use all capital letters. Don't include a 'type' prefix such as "PAD - " or "LD - ".
+-   Add as many tags as is relevant to the preset. Read more about tags on the [tags and folders](/docs/develop/tags-and-folders) page.
+-   Keep the description short, and end it with a full stop.
+-   Organise presets into folders using your file browser. You can rename presets and folders as you like. See the best practises for folders on the tags and folders page.
+
+## Designing macros
+
+Well-designed macros turn a static preset into something playable. Think about which aspects of the sound would be most musical to control. See [Macros](/docs/usage/macros) for how to set them up.
+
+-   Every macro should audibly do something. Moving it from 0% to 100% should make a clear difference.
+-   Ideally a macro's name is a single word with no abbreviations. Check how it looks on both the _Perform_ page and the bottom panel: is it readable, or too cramped?
+-   Describe what the macro does to the sound, not the technical details: _Pulse_ rather than _L1 LFO_, _Reverb_ rather than _Convol Mix_, or _Vibrato_ if turning it up adds vibrato.
+-   Turning a macro up should increase whatever its name describes, just as turning up a _Volume_ knob increases the volume. A macro that turns down a high shelf might be called _Damp_ or _Muffle_, because turning it up makes the sound more muffled. Invert it so that it turns the shelf up, and _Brightness_ or _Highs_ would fit better. Which way round is up to you.
+-   Both ends of the macro should be usable. A macro that all but mutes the sound at 0%, or clips the meters at 100%, isn't much help. The exception is something like a filter sweep, where filtering the sound away to nothing can be useful in a performance.
+-   You don't have to use all four macros. If you use fewer, fill them from the left, with the unused ones at the end. _Swap with Left_ and _Swap with Right_ make this easy.

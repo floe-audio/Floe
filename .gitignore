@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2024-2026 Sam Windell
+# SPDX-License-Identifier: CC0-1.0
+
+*.DS_Store
+nvim-project.ini
+.zig-cache/
+.zig-cache-global/
+.floe-cache/
+.workshop/
+zig-out/
+build_resources/external/
+.env
+.claude
+.harper-dictionary.txt
+opencode.jsonc
+website/node_modules/
+website/.docusaurus/
+website/build/
+website/build-manual/
+website/build-manual-screenshots/
+website/static/generated-data.json
+website/static/api/v1/version
+# Hosted on assets.floe.audio, see website/plugins/asset-urls.mjs
+website/static/images/**/*.png
+website/static/images/**/*.jpg
+website/static/images/**/*.jpeg
+website/static/images/**/*.gif
+website/static/images/**/*.webp
+website/static/images/**/*.mp4
+website/static/images/**/*.webm
+website/static/images/screenshots/*.json
+!website/static/images/favicon.png

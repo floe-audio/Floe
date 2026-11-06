@@ -1,0 +1,53 @@
+# Legacy Parameters
+
+> How Floe ensures backwards compatibility
+
+When you open an older DAW project, some of Floe's controls might show a yellow badge and refuse to move. Don't worry: your sound is safe and sounds exactly as it did when you saved it.
+
+What's happened is that a Floe update replaced some parameters with new versions. The old parameters still exist and work exactly as before, but they're hidden out of sight. While one of them is in charge, the matching control on the main UI is locked. That's what the badge means.
+
+You have two options:
+
+-   **Do nothing.** If you don't need to change the sound any further, leave it as it is. Floe is stable like this and sounds identical to when the project was saved.
+-   **Update to the current parameters.** Do this if you want to keep shaping the sound: it unlocks the main UI and the new parameters. The update keeps the sound the same and is normally perfectly safe, but check for DAW automation first, as described [below](#updating-a-legacy-parameter).
+
+## Why legacy parameters exist
+
+Floe aims for perfect backwards compatibility: a preset or DAW project saved with any version of Floe loads up sounding exactly the same in every later version. To make that possible without the main interface filling up with outdated controls, Floe never deletes a parameter. When a parameter needs to change, a new one goes on the main UI and the old one moves out of sight as a "legacy" parameter that quietly keeps doing its old job.
+
+## When does a parameter become legacy?
+
+A parameter becomes legacy when it changes in a way that would otherwise alter how an existing project sounds. We keep this to a minimum. It can happen, though, when adding options to a menu, improving the response of a knob, or combining or simplifying controls.
+
+In every case, the old parameter stays alive behind the scenes so your projects sound the same, and a new parameter appears on the main UI.
+
+## Presets and DAW projects
+
+When you load a preset, Floe usually updates any legacy values it finds by itself: it copies the equivalent value onto the new parameter and clears the legacy one. You won't see any legacy parameters, and the controls on the main UI work as normal.
+
+When you load a DAW project, Floe can't do this automatically, because it has no way of knowing whether your DAW is automating a legacy parameter, and silently changing the target would break your automation. Instead, Floe keeps the legacy value, lets it take charge of the new parameter, and shows the yellow badge on the affected control. The _Legacy Parameters_ panel, in the menu at the top of Floe's window, lists every legacy parameter that's currently in charge.
+
+## Locked controls
+
+While a legacy parameter is in charge, the matching control on the main UI is greyed out and doesn't respond: moving it would do nothing, since the legacy value is what reaches the sound. Click the badge in its corner to open the _Legacy Parameters_ panel.
+
+The control's position, and any display linked to it (such as filter curves, EQ displays or envelope shapes), shows the new parameter's own value, not the legacy value you're hearing. The sound is right, since the legacy value is the one being applied. Once you update, the display, the control and the sound all match up again.
+
+## Updating a legacy parameter
+
+Updating hands control from the legacy parameter to its replacement, copying across a value that sounds the same. The _Legacy Parameters_ panel has two ways to do this:
+
+-   **Update all to current parameters** — updates every legacy parameter that's in charge at once.
+-   **Update** — on each row, updates just that parameter.
+
+Your project sounds exactly as it did before, and the control on the main UI works again.
+
+If any DAW automation targets one of these parameters, remove or re-create that automation before updating. Floe decides whether a legacy parameter is in charge simply by checking whether it's at its default value, so as soon as the automation writes a different value, the legacy parameter takes charge again and the control locks.
+
+The recommended order:
+
+1.  Check your DAW for any automation lanes targeting the legacy parameter.
+2.  If there is automation, delete it in your DAW. If you still want it, re-create it on the new parameter.
+3.  Open the _Legacy Parameters_ panel and click _Update_ on the row, or _Update all to current parameters_.
+
+If there's no DAW automation on a legacy parameter, you can skip step 2: updating is then completely safe.
