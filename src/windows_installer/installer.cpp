@@ -107,21 +107,23 @@ static MutableString TempPathInSameDirAs(String dest_path, Allocator& arena, u64
 
 static ErrorCodeOr<void>
 WriteFileViaRename(String dest_path, Span<u8 const> data, u64& seed, ArenaAllocator& scratch) {
-    auto const temp_path = TempPathInSameDirAs(dest_path, scratch, seed);
-    bool success = false;
+    return TryWithRetries([&]() -> ErrorCodeOr<void> {
+        auto const temp_path = TempPathInSameDirAs(dest_path, scratch, seed);
+        bool success = false;
 
-    // Always try clean up any failed or partially written temp.
-    DEFER {
-        if (!success)
-            auto _ = Delete(temp_path, {.type = DeleteOptions::Type::File, .fail_if_not_exists = false});
-    };
+        // Always try clean up any failed or partially written temp.
+        DEFER {
+            if (!success)
+                auto _ = Delete(temp_path, {.type = DeleteOptions::Type::File, .fail_if_not_exists = false});
+        };
 
-    // Write to a temp file. Then rename to file - atomic.
-    TRY(WriteFile(temp_path, data));
-    TRY(Rename(temp_path, dest_path));
+        // Write to a temp file. Then rename to file - atomic.
+        TRY(WriteFile(temp_path, data));
+        TRY(Rename(temp_path, dest_path));
 
-    success = true;
-    return k_success;
+        success = true;
+        return k_success;
+    });
 }
 
 static ErrorCodeOr<void> TryInstall(Component const& comp, u64& seed) {

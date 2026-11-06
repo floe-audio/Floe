@@ -17,6 +17,17 @@
 constexpr auto k_uninstall_key =
     L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{1395024D-2B55-4B81-88CA-26DF09D175B1}";
 
+// Antivirus scans and plugin scanners can briefly lock files and folders we're writing to.
+PUBLIC ErrorCodeOr<void> TryWithRetries(auto&& function) {
+    constexpr u32 k_attempts = 3;
+    for (auto const attempt : Range(k_attempts)) {
+        auto const outcome = function();
+        if (!outcome.HasError() || attempt == k_attempts - 1) return outcome;
+        Sleep(100);
+    }
+    PanicIfReached();
+}
+
 PUBLIC Optional<String> UninstallerPath(ArenaAllocator& arena, bool create) {
     PWSTR wide_dir {};
     auto const hr = SHGetKnownFolderPath(FOLDERID_ProgramFiles,
@@ -37,18 +48,15 @@ PUBLIC Optional<String> UninstallerPath(ArenaAllocator& arena, bool create) {
     ASSERT(path::TrimDirectorySeparatorsEnd(path).size == path.size);
 
     if (create) {
-        // We give it a few attempts in case antivirus is doing a scan.
-        for (auto const attempt : Range(3)) {
-            TRY_OR(
-                CreateDirectory(path, {.create_intermediate_directories = false, .fail_if_exists = false}),
-                {
-                    if (attempt == 2) {
-                        ReportError(ErrorLevel::Warning, k_nullopt, "Failed to create directory: {}", error);
-                        return k_nullopt;
-                    }
-                });
-            Sleep(100);
-        }
+        TRY_OR(TryWithRetries([&] {
+                   return CreateDirectory(
+                       path,
+                       {.create_intermediate_directories = false, .fail_if_exists = false});
+               }),
+               {
+                   ReportError(ErrorLevel::Warning, k_nullopt, "Failed to create directory: {}", error);
+                   return k_nullopt;
+               });
     }
 
     path = path::JoinAppendResizeAllocation(arena, path, Array {path::Filename(UNINSTALLER_BINARY_NAME)});
