@@ -5,19 +5,40 @@ import React from 'react';
 import styles from './styles.module.css';
 
 function PackageCard({ pkg }) {
-    const hasDownload = pkg.direct_download_link || pkg.external_product_page;
+    const detailsUrl = `/packages/${pkg.slug}`;
+    const galleryCount = (pkg.gallery || []).length;
 
     return (
         <div className={styles.packageCard}>
             {pkg.background_image && (
                 <div className={styles.imageContainer}>
-                    <a href={`/packages/${pkg.slug}`} className={styles.imageLink}>
+                    <a href={detailsUrl} className={styles.imageLink}>
                         <img
                             src={pkg.background_image}
                             alt={`${pkg.name} interface`}
                             className={styles.packageImage}
                         />
                     </a>
+                    {(pkg.demo_video || galleryCount > 0) && (
+                        <div className={styles.mediaChips}>
+                            {pkg.demo_video && (
+                                <a href={`${detailsUrl}#video`} className={styles.mediaChip}>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                        <path d="M8 5v14l11-7z" />
+                                    </svg>
+                                    Video
+                                </a>
+                            )}
+                            {galleryCount > 0 && (
+                                <a href={`${detailsUrl}#gallery`} className={styles.mediaChip}>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                        <path d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4l2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z" />
+                                    </svg>
+                                    {galleryCount} image{galleryCount !== 1 ? 's' : ''}
+                                </a>
+                            )}
+                        </div>
+                    )}
                     {pkg.image_attribution && (
                         <div className={styles.imageAttribution}>
                             <span
@@ -74,7 +95,7 @@ function PackageCard({ pkg }) {
                 <div className={styles.header}>
                     <div className={styles.titleSection}>
                         <h3 className={styles.title}>
-                            <a href={`/packages/${pkg.slug}`} className={styles.titleLink}>
+                            <a href={detailsUrl} className={styles.titleLink}>
                                 {pkg.name}
                             </a>
                         </h3>
@@ -127,34 +148,43 @@ function PackageCard({ pkg }) {
                     </span>
                 </div>
 
-                {hasDownload && (
-                    <div className={styles.actions}>
-                        {pkg.direct_download_link ? (
-                            <a
-                                href={pkg.direct_download_link}
-                                className={styles.downloadButton}
-                                download
-                            >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                                </svg>
-                                Download Package
-                            </a>
-                        ) : (
-                            <a
-                                href={pkg.external_product_page}
-                                className={styles.downloadButton + ' ' + styles.externalButton}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
-                                </svg>
-                                Visit Page
-                            </a>
-                        )}
-                    </div>
-                )}
+                <div className={styles.actions}>
+                    {pkg.direct_download_link && (
+                        <a
+                            href={pkg.direct_download_link}
+                            className={styles.actionButton + ' ' + styles.downloadButton}
+                            download
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+                            </svg>
+                            Download
+                        </a>
+                    )}
+                    {!pkg.direct_download_link && pkg.external_product_page && (
+                        <a
+                            href={pkg.external_product_page}
+                            className={styles.actionButton + ' ' + styles.externalButton}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />
+                            </svg>
+                            Product Page
+                        </a>
+                    )}
+                    <a
+                        href={detailsUrl}
+                        className={styles.actionButton + ' ' + styles.detailsButton}
+                        aria-label={`${pkg.name} details`}
+                    >
+                        Details
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+                        </svg>
+                    </a>
+                </div>
             </div>
         </div>
     );

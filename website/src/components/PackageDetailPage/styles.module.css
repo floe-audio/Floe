@@ -190,6 +190,7 @@
 /* Demo Video */
 .videoSection {
   margin-bottom: 2rem;
+  scroll-margin-top: calc(var(--ifm-navbar-height) + 1rem);
 }
 
 .demoVideo {
@@ -206,6 +207,7 @@
 
 /* Gallery */
 .gallery {
+  scroll-margin-top: calc(var(--ifm-navbar-height) + 1rem);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 0.75rem;

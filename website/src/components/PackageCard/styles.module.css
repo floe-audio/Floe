@@ -233,41 +233,95 @@
 
 .actions {
   margin-top: auto;
+  display: flex;
+  gap: 8px;
 }
 
-.downloadButton {
+.actionButton {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 8px 12px;
-  background: transparent;
-  color: var(--ifm-color-primary);
-  text-decoration: none;
   border: 1px solid var(--ifm-color-emphasis-300);
   border-radius: 4px;
   font-weight: 500;
   font-size: 0.85rem;
+  text-decoration: none;
   transition: all 0.15s ease;
-  width: 100%;
-  justify-content: center;
+}
+
+.actionButton:hover {
+  background: var(--ifm-color-emphasis-100);
+  text-decoration: none;
+}
+
+.downloadButton,
+.externalButton {
+  flex: 1;
+}
+
+.downloadButton {
+  color: var(--ifm-color-primary);
 }
 
 .downloadButton:hover {
-  background: var(--ifm-color-emphasis-100);
   color: var(--ifm-color-primary);
-  text-decoration: none;
   border-color: var(--ifm-color-primary);
 }
 
 .externalButton {
-  border-color: var(--ifm-color-emphasis-300);
   color: var(--ifm-color-content);
 }
 
 .externalButton:hover {
-  background: var(--ifm-color-emphasis-100);
   color: var(--ifm-color-content);
   border-color: var(--ifm-color-emphasis-500);
+}
+
+.detailsButton {
+  padding-right: 8px;
+  color: var(--ifm-color-content-secondary);
+}
+
+.detailsButton:only-child {
+  flex: 1;
+}
+
+.detailsButton:hover {
+  color: var(--ifm-color-content);
+  border-color: var(--ifm-color-emphasis-500);
+}
+
+.mediaChips {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 6px;
+  z-index: 1;
+}
+
+.mediaChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.mediaChip:hover {
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  text-decoration: none;
 }
 
 /* Responsive adjustments */

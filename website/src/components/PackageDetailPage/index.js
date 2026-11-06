@@ -163,7 +163,7 @@ function PackageDetailPage(props) {
 
                         {/* Demo Video */}
                         {pkg.demo_video && (
-                            <div className={styles.videoSection}>
+                            <div id="video" className={styles.videoSection}>
                                 <video
                                     className={styles.demoVideo}
                                     src={pkg.demo_video}
@@ -176,7 +176,7 @@ function PackageDetailPage(props) {
 
                         {/* Gallery */}
                         {gallery.length > 0 && (
-                            <div className={styles.gallery}>
+                            <div id="gallery" className={styles.gallery}>
                                 {gallery.map((image, index) => (
                                     <button
                                         key={image}
