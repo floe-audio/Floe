@@ -984,10 +984,12 @@ void WriteIfNeeded(Preferences& prefs, Optional<String> override_write_path) {
                                 override_write_path.ValueOr(PreferencesFilepath()),
                                 prefs.last_known_file_modified_time),
            {
-               ReportError(ErrorLevel::Error,
-                           SourceLocationHash(),
-                           "failed to write preferences file: {}",
-                           error);
+               // TODO: show disk-full to the user instead.
+               if (error != FilesystemError::DiskFull)
+                   ReportError(ErrorLevel::Error,
+                               SourceLocationHash(),
+                               "failed to write preferences file: {}",
+                               error);
            });
 
     prefs.write_to_file_needed = false;

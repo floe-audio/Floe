@@ -188,8 +188,11 @@ void AutosaveToFileIfNeeded(AutosaveState& state, FloePaths const& paths) {
         }
     }
     if (snapshot) {
-        TRY_OR(Autosave(state, *snapshot, paths),
-               ReportError(ErrorLevel::Error, HashFnv1a("autosave"), "autosave failed: {}", error););
+        TRY_OR(Autosave(state, *snapshot, paths), {
+            // TODO: show disk-full to the user instead.
+            if (error != FilesystemError::DiskFull)
+                ReportError(ErrorLevel::Error, HashFnv1a("autosave"), "autosave failed: {}", error);
+        });
         ArenaAllocatorWithInlineStorage<1000> scratch_arena {PageAllocator::Instance()};
         static bool first_call = true;
         if (Exchange(first_call, false)) {
