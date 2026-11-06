@@ -990,8 +990,8 @@ ErrorCodeOr<void> Rename(String from, String to) {
                 }
             }
 
-            // File to file, allowed.
-            if (!from_is_dir && !to_is_dir) continue;
+            // File to file, allowed: retry in replacing mode.
+            if (!from_is_dir && !to_is_dir && !(flags & MOVEFILE_REPLACE_EXISTING)) continue;
         }
 
         return FilesystemWin32ErrorCode(err, "MoveFileExW");
