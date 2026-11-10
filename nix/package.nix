@@ -85,6 +85,7 @@ stdenv.mkDerivation {
       -Dtargets=linux \
       -Dbuild-mode=${buildMode} \
       -Dinclude-git-hash=false \
+      -Dsplit-debug-symbols=false \
       ${lib.optionalString fetchFloeLogos "-Dfetch-floe-logos"}
 
     # Zig installs plugins under $out/.clap and $out/.vst3 (the layout used for a $HOME prefix). Move

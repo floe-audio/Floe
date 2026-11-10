@@ -22,6 +22,7 @@ pub const Options = struct {
     include_git_hash: ?bool,
     use_system_pluginval: bool,
     bgfx_renderer: bool,
+    split_debug_symbols: ?bool,
     targets: ?[]const u8,
     screenshot_presets: ?[]const u8,
 };
@@ -37,6 +38,7 @@ pub const BuildContext = struct {
     build_mode: BuildMode,
     optimise: std.builtin.OptimizeMode,
     windows_installer_require_admin: bool,
+    split_debug_symbols: bool,
 
     // Dependencies.
     dep_floe_logos: ?*std.Build.Dependency,

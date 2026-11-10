@@ -491,6 +491,11 @@ pub fn build(b: *std.Build) void {
             "bgfx-renderer",
             "Use the bgfx GUI renderer rather than OpenGL/Direct3D 9",
         ) orelse true,
+        .split_debug_symbols = b.option(
+            bool,
+            "split-debug-symbols",
+            "Move debug info out of binaries, ready for uploading to Sentry. Default is true for production builds.",
+        ),
         .targets = b.option([]const u8, "targets", "Target operating system"),
         .screenshot_presets = screenshot_presets,
     };
@@ -527,6 +532,7 @@ pub fn build(b: *std.Build) void {
             .performance_profiling, .production => if (options.no_runtime_safety_checks) std.builtin.OptimizeMode.ReleaseFast else std.builtin.OptimizeMode.ReleaseSafe,
         },
         .windows_installer_require_admin = options.windows_installer_require_admin,
+        .split_debug_symbols = options.split_debug_symbols orelse (options.build_mode == .production),
 
         .dep_floe_logos = if (options.fetch_floe_logos)
             b.lazyDependency("floe_logos", .{})
@@ -3141,7 +3147,7 @@ fn doTarget(
         const installed = configure_binaries.installProcessedExecutable(
             exe,
             .{ .description = "Floe Packager" },
-            ctx.build_mode == .production,
+            ctx.split_debug_symbols,
         );
         top_level_steps.install_bin.dependOn(installed.step);
 
@@ -3181,7 +3187,7 @@ fn doTarget(
         const installed = configure_binaries.installProcessedExecutable(
             exe,
             .{ .description = "Floe Library Inspector" },
-            ctx.build_mode == .production,
+            ctx.split_debug_symbols,
         );
         top_level_steps.install_bin.dependOn(installed.step);
 
@@ -3201,7 +3207,7 @@ fn doTarget(
                 .clap,
                 dso,
                 configure_binaries.CodesignInfo{ .description = "Floe CLAP Plugin" },
-                ctx.build_mode == .production,
+                ctx.split_debug_symbols,
             );
             top_level_steps.install_plugins.dependOn(clap.install_step);
             top_level_steps.install_clap.dependOn(clap.install_step);
@@ -3393,7 +3399,7 @@ fn doTarget(
                 .vst3,
                 dso,
                 configure_binaries.CodesignInfo{ .description = "Floe VST3 Plugin" },
-                ctx.build_mode == .production,
+                ctx.split_debug_symbols,
             );
             top_level_steps.install_plugins.dependOn(vst3.install_step);
             top_level_steps.install_all.dependOn(vst3.install_step);
@@ -3423,7 +3429,7 @@ fn doTarget(
         if (cfg.target.os.tag == .macos and !options.sanitize_thread) {
             const dso = buildAu(ctx, cfg, .{ .plugin = plugin });
 
-            const au = configure_binaries.addConfiguredPlugin(ctx.b, .au, dso, null, ctx.build_mode == .production);
+            const au = configure_binaries.addConfiguredPlugin(ctx.b, .au, dso, null, ctx.split_debug_symbols);
             top_level_steps.install_plugins.dependOn(au.install_step);
             top_level_steps.install_all.dependOn(au.install_step);
 
@@ -3524,7 +3530,7 @@ fn doTarget(
                     .debug_symbols = configure_binaries.splitDebugSymbols(
                         exe,
                         exe.out_filename,
-                        ctx.build_mode == .production,
+                        ctx.split_debug_symbols,
                     ).debug_symbols,
                 };
             };
@@ -3578,7 +3584,7 @@ fn doTarget(
                     configure_binaries.splitDebugSymbols(
                         installer,
                         installer.out_filename,
-                        ctx.build_mode == .production,
+                        ctx.split_debug_symbols,
                     ).debug_symbols,
                     uninstaller.debug_symbols,
                 }),
