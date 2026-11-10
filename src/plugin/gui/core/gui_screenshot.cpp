@@ -22,9 +22,7 @@ bool IsScreenshotRequest(String id_name) {
     return IsEqualToCaseInsensitiveAscii(GuiIo().in.requested_screenshot_id_name, id_name);
 }
 
-bool IsAnyScreenshotInProgress() {
-    return GuiIo().in.requested_screenshot_id_name.size != 0 || GuiIo().out.request_screenshot.HasValue();
-}
+bool IsAnyScreenshotInProgress() { return GuiIo().in.requested_screenshot_id_name.size != 0; }
 
 static bool AsyncLoadsInProgress(GuiState& g) {
     if (sample_lib_server::AreLibrariesScanning(g.shared_engine_systems.sample_library_server)) return true;
