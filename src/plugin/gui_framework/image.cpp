@@ -262,7 +262,7 @@ static inline f32x4 MakeOpaque(f32x4 pixel) {
 
 static void WriteImageF32AsBytesNoAlpha(ImageF32 image, u8* out) {
     for (auto [pixel_index, pixel] : Enumerate(image.rgba)) {
-        auto bytes = ConvertVector(MakeOpaque(pixel) * 255.0f, u8x4);
+        auto bytes = ConvertVector(MakeOpaque(pixel) * 255.0f + 0.5f, u8x4);
         StoreToUnaligned(out + (pixel_index * k_rgba_channels), bytes);
     }
 }
