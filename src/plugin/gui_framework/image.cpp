@@ -260,9 +260,21 @@ static inline f32x4 MakeOpaque(f32x4 pixel) {
     return pixel;
 }
 
+// Interleaved gradient noise in [0, 1), matching the dither in fs_draw_list.sc.
+static inline f32 DitherNoise(f32 x, f32 y) {
+    auto const fract = [](f32 v) { return v - Floor(v); };
+    return fract(52.9829189f * fract((x * 0.06711056f) + (y * 0.00583715f)));
+}
+
+// Smooth, low-contrast blurs would otherwise quantise into wide flat bands that no amount of GPU-side
+// dithering can recover.
 static void WriteImageF32AsBytesNoAlpha(ImageF32 image, u8* out) {
+    ASSERT(image.size.width);
     for (auto [pixel_index, pixel] : Enumerate(image.rgba)) {
-        auto bytes = ConvertVector(MakeOpaque(pixel) * 255.0f + 0.5f, u8x4);
+        auto const x = (f32)(pixel_index % image.size.width);
+        auto const y = (f32)(pixel_index / image.size.width);
+        auto const dither = (DitherNoise(x, y) - 0.5f) / 255.0f;
+        auto bytes = ConvertVector(MakeOpaque(Clamp01(pixel + dither)) * 255.0f + 0.5f, u8x4);
         StoreToUnaligned(out + (pixel_index * k_rgba_channels), bytes);
     }
 }
