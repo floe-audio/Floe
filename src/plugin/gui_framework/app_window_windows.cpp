@@ -95,12 +95,16 @@ struct DpiAwareness {
 
     Optional<float> Dpi() const {
         if (!dpi_awareness) return k_nullopt;
-        return (f32)dpi_for_system();
+        auto const dpi = dpi_for_system();
+        if (!dpi) return k_nullopt;
+        return (f32)dpi;
     }
 
+    // GetDpiForWindow returns 0 for an invalid HWND, seen in the wild when called with GetForegroundWindow().
     Optional<float> Dpi(HWND hwnd) const {
         if (!dpi_awareness) return k_nullopt;
-        return (f32)dpi_for_window(hwnd);
+        if (auto const dpi = dpi_for_window(hwnd)) return (f32)dpi;
+        return Dpi();
     }
 
     template <typename T>
