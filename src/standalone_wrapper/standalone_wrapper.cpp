@@ -905,6 +905,7 @@ struct RunOptions {
     Optional<UiSize> fixed_window_size;
     Optional<String> app_id;
     Optional<String> ui_dump_path;
+    f64 tempo_bpm;
     bool headless;
     bool midi_stdin;
 };
@@ -1174,6 +1175,7 @@ static ErrorCodeOr<void> Run(RunOptions options, ArenaAllocator& arena) {
     Standalone standalone {};
     standalone.headless = options.headless || options.offline_render;
     standalone.devices.midi.force_channel_zero = options.force_midi_channel_zero;
+    standalone.devices.tempo.Store(options.tempo_bpm, StoreMemoryOrder::Relaxed);
     // Screenshots skip it too, so a MIDI device missing from the preferences can't put an error over them.
     standalone.devices.midi.skip_device_input = options.midi_stdin || options.screenshot_region.HasValue();
     standalone.devices.audio.use_null_backend = options.screenshot_region.HasValue();
@@ -1462,6 +1464,7 @@ static int Main(ArgsCstr args) {
         Events,
         SampleRate,
         Tail,
+        Tempo,
         Count,
     };
 
@@ -1587,6 +1590,14 @@ static int Main(ArgsCstr args) {
             .required = false,
             .num_values = 1,
         },
+        {
+            .id = (u32)CommandLineArgId::Tempo,
+            .key = "tempo",
+            .description = "Host tempo in BPM, e.g. '96.5'. Default 120.",
+            .value_type = "bpm",
+            .required = false,
+            .num_values = 1,
+        },
     });
 
     ArenaAllocator arena {PageAllocator::Instance()};
@@ -1680,6 +1691,19 @@ static int Main(ArgsCstr args) {
         result;
     });
 
+    auto const tempo_bpm = ({
+        f64 result = 120;
+        if (auto const tempo_str = cli_args[ToInt(CommandLineArgId::Tempo)].Value()) {
+            auto const parsed = ParseWholeFloat(*tempo_str);
+            if (!parsed || !(*parsed >= 20 && *parsed <= 999)) {
+                StdPrintF(StdStream::Err, "Error: invalid --tempo '{}': must be in [20, 999]\n", *tempo_str);
+                return 1;
+            }
+            result = *parsed;
+        }
+        result;
+    });
+
     auto const o = Run(
         {
             .offline_render = offline_render,
@@ -1692,6 +1716,7 @@ static int Main(ArgsCstr args) {
             .fixed_window_size = fixed_window_size,
             .app_id = cli_args[ToInt(CommandLineArgId::AppId)].Value(),
             .ui_dump_path = cli_args[ToInt(CommandLineArgId::UiDump)].Value(),
+            .tempo_bpm = tempo_bpm,
             .headless = cli_args[ToInt(CommandLineArgId::Headless)].was_provided,
             .midi_stdin = midi_stdin,
         },
