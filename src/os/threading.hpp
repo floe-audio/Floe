@@ -741,15 +741,14 @@ struct Future {
                 if (s & k_working_bit) BusyWaitForWorkingBitClear();
                 return ReleaseResult();
 
-            case Status::Inactive:
-                if (s & k_working_bit) BusyWaitForWorkingBitClear();
-                return {};
+            case Status::Inactive: Reset(); return {};
 
             case Status::Pending:
             case Status::Running: {
                 if (!(s & k_cancel_bit)) status.FetchOr(k_cancel_bit, RmwMemoryOrder::AcquireRelease);
-                if (!WaitUntilFinished(timeout_milliseconds)) Panic("Future::Shutdown timed out");
+                if (!WaitUntilFinished(timeout_milliseconds)) Panic("Future::ShutdownAndRelease timed out");
                 if (IsFinished()) return ReleaseResult();
+                Reset();
                 return {};
             }
         }

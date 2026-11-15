@@ -190,6 +190,8 @@ TEST_CASE(TestFuture) {
         CHECK(!future.TrySetRunning());
 
         CHECK(!future.ShutdownAndRelease());
+        CHECK(future.IsInactive());
+        CHECK(!future.IsCancelled());
     }
 
     SUBCASE("waiting") {
@@ -349,6 +351,7 @@ TEST_CASE(TestFuture) {
                     if (auto const result = future.ShutdownAndRelease()) CHECK(*result == round);
 
                     CHECK(future.IsInactive());
+                    CHECK(!future.IsCancelled());
                     break;
                 }
             }
