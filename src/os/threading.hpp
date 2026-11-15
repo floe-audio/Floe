@@ -649,6 +649,9 @@ struct Future {
     static bool IsCancelled(u32 s) { return s & k_cancel_bit; }
     static bool IsFinished(u32 s) { return (s & k_status_mask) == (u32)Status::Finished; }
     static bool IsInactive(u32 s) { return (s & k_status_mask) == (u32)Status::Inactive; }
+    // Only once this is true may the consumer destroy the Future without waiting. A Future that is no longer
+    // in progress can still be in use by the producer for a brief moment.
+    static bool IsProducerDone(u32 s) { return !IsInProgress(s) && !(s & k_working_bit); }
 
     // Thread-safe.
     bool IsFinished() const { return IsFinished(status.Load(LoadMemoryOrder::Acquire)); }
@@ -656,6 +659,7 @@ struct Future {
     bool IsCancelled() const { return IsCancelled(status.Load(LoadMemoryOrder::Acquire)); }
     bool IsInProgress() const { return IsInProgress(status.Load(LoadMemoryOrder::Acquire)); }
     bool IsInactive() const { return IsInactive(status.Load(LoadMemoryOrder::Acquire)); }
+    bool IsProducerDone() const { return IsProducerDone(status.Load(LoadMemoryOrder::Acquire)); }
     // Use with the static Is* functions:
     u32 AcquireStatus() const { return status.Load(LoadMemoryOrder::Acquire); }
 
@@ -790,6 +794,9 @@ struct Future {
     // Producer/consumer thread. This is the first step in scheduling work.
     void SetPending() {
         ASSERT(IsInactive());
+        // A producer that saw a cancellation may be about to clear the working bit; our new working bit must
+        // not be the one it clears.
+        BusyWaitForWorkingBitClear();
         status.Store((u32)Status::Pending | k_working_bit, StoreMemoryOrder::Release);
     }
 
@@ -844,7 +851,7 @@ struct Future {
 
     ~Future() {
         auto const s = status.Load(LoadMemoryOrder::Relaxed);
-        ASSERT(!IsInProgress(s));
+        ASSERT(IsProducerDone(s));
         if constexpr (!TriviallyCopyable<Type>) {
             if (IsFinished(s)) RawResult().~Type();
         }

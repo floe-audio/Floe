@@ -144,10 +144,24 @@ TEST_CASE(TestFuture) {
         CHECK(future.IsCancelled());
         CHECK(future.IsInProgress());
 
+        CHECK(!future.IsProducerDone());
+
         // TrySetRunning should fail
         CHECK(!future.TrySetRunning());
         CHECK(future.IsCancelled());
         CHECK(future.IsInactive());
+        CHECK(future.IsProducerDone());
+    }
+
+    SUBCASE("producer is not done while the working bit is set") {
+        using F = Future<int>;
+        CHECK(F::IsProducerDone((u32)F::Status::Inactive));
+        CHECK(F::IsProducerDone((u32)F::Status::Inactive | F::k_cancel_bit));
+        CHECK(F::IsProducerDone((u32)F::Status::Finished));
+        CHECK(!F::IsProducerDone((u32)F::Status::Inactive | F::k_cancel_bit | F::k_working_bit));
+        CHECK(!F::IsProducerDone((u32)F::Status::Finished | F::k_working_bit));
+        CHECK(!F::IsProducerDone((u32)F::Status::Pending | F::k_working_bit));
+        CHECK(!F::IsProducerDone((u32)F::Status::Running | F::k_working_bit));
     }
 
     SUBCASE("future cancellation after finishing") {

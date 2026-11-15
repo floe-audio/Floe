@@ -193,7 +193,7 @@ void EndFrame(WaveformImagesTable& table, Renderer& renderer, Span<Instrument co
     // Clean up orphaned loading futures (cancelled while their job was still in progress).
     table.loading_pixels.RemoveIf([](WaveformImage::FuturePixels& future) {
         auto const status = future.AcquireStatus();
-        if (!future.IsInProgress(status) && future.IsCancelled(status)) {
+        if (future.IsProducerDone(status) && future.IsCancelled(status)) {
             if (auto const result = future.TryReleaseResult()) result->Free(PixelsAllocator());
             return true;
         }
