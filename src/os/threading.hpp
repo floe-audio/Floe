@@ -619,7 +619,7 @@ class ScopedSpinLock {
 //
 // // Consumer thread:
 // if (shutdown_requested) {
-//     future.Shutdown(); // Ensure no worker is using `future`.
+//     auto _ = future.ShutdownAndRelease(); // Ensure no worker is using `future`.
 // }
 //
 template <typename Type>
@@ -843,8 +843,7 @@ struct Future {
         WakeWaitingThreads(status, NumWaitingThreads::All);
 
         // We are done touching status now, we can clear the working bit meaning another thread can now free
-        // this memory. It doesn't matter if the consumer thread has decided to change the status to Inactive
-        // (such as via TryReleaseResult), we are doing a harmless clear of the working bit.
+        // this memory.
         status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
     }
 
