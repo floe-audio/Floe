@@ -58,7 +58,7 @@ struct BitCrushProcessor {
     f32x2 Quantise(f32x2 input) const {
         if (m_bit_depth >= 32.0f) return input;
         if (m_legacy_resolution != 0.0f)
-            return Round((input + 1.0f) * m_legacy_resolution) / m_legacy_resolution - 1.0f;
+            return (Round((input + 1.0f) * m_legacy_resolution) / m_legacy_resolution) - 1.0f;
         return Round(input * m_half_levels) / m_half_levels;
     }
 

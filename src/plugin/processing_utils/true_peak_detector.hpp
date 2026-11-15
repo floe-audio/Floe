@@ -20,7 +20,7 @@
 class TruePeakDetector {
   public:
     static constexpr u32 k_taps_per_phase = 6;
-    static constexpr u32 k_centre_tap = k_taps_per_phase / 2 - 1; // index of the offset-0 tap
+    static constexpr u32 k_centre_tap = (k_taps_per_phase / 2) - 1; // index of the offset-0 tap
     static constexpr u32 k_group_delay_samples = k_taps_per_phase - 1 - k_centre_tap;
     static constexpr u32 k_num_interpolated_phases = 3; // phases 1, 2, 3 of 4; phase 0 is the sample itself
 
@@ -36,7 +36,7 @@ class TruePeakDetector {
                 auto const x = offset - phase;
                 auto const sinc = (x == 0.0f) ? 1.0f : (Sin(k_pi<f32> * x) / (k_pi<f32> * x));
                 auto const window =
-                    0.54f - 0.46f * Cos(k_tau<f32> * (f32)tap_index / (f32)(k_taps_per_phase - 1));
+                    0.54f - (0.46f * Cos(k_tau<f32> * (f32)tap_index / (f32)(k_taps_per_phase - 1)));
                 m_coeffs[phase_index][tap_index] = sinc * window;
                 sum += sinc * window;
             }
