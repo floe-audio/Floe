@@ -127,37 +127,34 @@ static void AsyncLoadIcon(sample_lib::LibraryId lib_id,
                           bool log_failure) {
     thread_pool.Async(
         result,
-        [lib_id = lib_id,
-         &server,
-         instance_index,
-         log_failure,
-         desired_icon_size = CheckedCast<u16>(Ceil(WwToPixels(k_library_icon_standard_size)) *
-                                              2)]() -> LibraryImages::LoadedIcon {
-            DEFER { RequestGuiUpdate(instance_index); };
-
-            ArenaAllocator scratch_arena {PageAllocator::Instance()};
-            auto const pixels = ({
-                ImagePixelsOrFailure p = LibraryImages::LoadFailure::Missing;
-                if (UsesFloeIcon(lib_id)) {
-                    if (auto floe_icon = FloeIconPixels(scratch_arena)) p = *floe_icon;
-                } else {
-                    p = ImagePixelsFromLibrary(lib_id,
-                                               LibraryImageType::Icon,
-                                               server,
-                                               scratch_arena,
-                                               scratch_arena,
-                                               log_failure);
-                }
-                p;
-            });
-            if (pixels.HasError()) return {.failure = pixels.Error()};
-            auto const source = pixels.ReleaseValue();
-            return {.icon = ResizeImage(source, desired_icon_size, ImageBytesAllocator()).OrElse([&] {
-                return source.Clone(ImageBytesAllocator());
-            })};
-        },
-        []() {
-            // no cleanup
+        ThreadPool::AsyncJob {
+            .function = [lib_id = lib_id,
+                         &server,
+                         log_failure,
+                         desired_icon_size = CheckedCast<u16>(Ceil(WwToPixels(k_library_icon_standard_size)) *
+                                                              2)]() -> LibraryImages::LoadedIcon {
+                ArenaAllocator scratch_arena {PageAllocator::Instance()};
+                auto const pixels = ({
+                    ImagePixelsOrFailure p = LibraryImages::LoadFailure::Missing;
+                    if (UsesFloeIcon(lib_id)) {
+                        if (auto floe_icon = FloeIconPixels(scratch_arena)) p = *floe_icon;
+                    } else {
+                        p = ImagePixelsFromLibrary(lib_id,
+                                                   LibraryImageType::Icon,
+                                                   server,
+                                                   scratch_arena,
+                                                   scratch_arena,
+                                                   log_failure);
+                    }
+                    p;
+                });
+                if (pixels.HasError()) return {.failure = pixels.Error()};
+                auto const source = pixels.ReleaseValue();
+                return {.icon = ResizeImage(source, desired_icon_size, ImageBytesAllocator()).OrElse([&] {
+                    return source.Clone(ImageBytesAllocator());
+                })};
+            },
+            .on_published = [instance_index]() { RequestGuiUpdate(instance_index); },
         });
 }
 
@@ -182,64 +179,61 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryId lib_id,
 
     thread_pool.Async(
         result,
-        [lib_id,
-         reload_background,
-         reload_blurred_background,
-         blur_options,
-         &server,
-         instance_index,
-         log_failure,
-         window_width = GuiIo().in.window_size.width]() -> LibraryImages::LoadedBackgrounds {
-            DEFER { RequestGuiUpdate(instance_index); };
+        ThreadPool::AsyncJob {
+            .function = [lib_id,
+                         reload_background,
+                         reload_blurred_background,
+                         blur_options,
+                         &server,
+                         log_failure,
+                         window_width = GuiIo().in.window_size.width]() -> LibraryImages::LoadedBackgrounds {
+                ArenaAllocator scratch_arena {PageAllocator::Instance()};
 
-            ArenaAllocator scratch_arena {PageAllocator::Instance()};
+                auto const pixels_or_failure = ({
+                    ImagePixelsOrFailure p = LibraryImages::LoadFailure::Missing;
+                    if (lib_id == k_default_background_lib_id) {
+                        auto const image_data = EmbeddedDefaultBackground();
+                        p = DecodeImage({image_data.data, image_data.size}, scratch_arena).Value();
+                    } else {
+                        p = ImagePixelsFromLibrary(lib_id,
+                                                   LibraryImageType::Background,
+                                                   server,
+                                                   scratch_arena,
+                                                   scratch_arena,
+                                                   log_failure);
+                    }
+                    p;
+                });
 
-            auto const pixels_or_failure = ({
-                ImagePixelsOrFailure p = LibraryImages::LoadFailure::Missing;
-                if (lib_id == k_default_background_lib_id) {
-                    auto const image_data = EmbeddedDefaultBackground();
-                    p = DecodeImage({image_data.data, image_data.size}, scratch_arena).Value();
-                } else {
-                    p = ImagePixelsFromLibrary(lib_id,
-                                               LibraryImageType::Background,
-                                               server,
-                                               scratch_arena,
-                                               scratch_arena,
-                                               log_failure);
-                }
-                p;
-            });
+                if (pixels_or_failure.HasError()) return {.failure = pixels_or_failure.Error()};
+                auto const pixels = pixels_or_failure.ReleaseValue();
 
-            if (pixels_or_failure.HasError()) return {.failure = pixels_or_failure.Error()};
-            auto const pixels = pixels_or_failure.ReleaseValue();
+                LibraryImages::LoadedBackgrounds result {};
 
-            LibraryImages::LoadedBackgrounds result {};
+                // If the image is quite a lot larger than we need, resize it down to avoid storing a huge
+                // image on the GPU
+                auto const background =
+                    (f32)pixels.size.width > (f32)window_width * 1.3f
+                        ? ResizeImage(pixels, window_width, ImageBytesAllocator()).OrElse([&] {
+                              return pixels.Clone(ImageBytesAllocator());
+                          })
+                        : pixels.Clone(ImageBytesAllocator());
 
-            // If the image is quite a lot larger than we need, resize it down to avoid storing a huge
-            // image on the GPU
-            auto const background =
-                (f32)pixels.size.width > (f32)window_width * 1.3f
-                    ? ResizeImage(pixels, window_width, ImageBytesAllocator()).OrElse([&] {
-                          return pixels.Clone(ImageBytesAllocator());
-                      })
-                    : pixels.Clone(ImageBytesAllocator());
+                if (reload_background) result.background = background;
 
-            if (reload_background) result.background = background;
+                if (reload_blurred_background)
+                    result.blurred_background = CreateBlurredLibraryBackground(background,
+                                                                               ImageBytesAllocator(),
+                                                                               scratch_arena,
+                                                                               blur_options);
 
-            if (reload_blurred_background)
-                result.blurred_background = CreateBlurredLibraryBackground(background,
-                                                                           ImageBytesAllocator(),
-                                                                           scratch_arena,
-                                                                           blur_options);
+                if (!reload_background) background.Free(ImageBytesAllocator());
 
-            if (!reload_background) background.Free(ImageBytesAllocator());
-
-            return result;
-        },
-        []() {
-            // no cleanup
-        },
-        JobPriority::High);
+                return result;
+            },
+            .on_published = [instance_index]() { RequestGuiUpdate(instance_index); },
+            .priority = JobPriority::High,
+        });
 }
 
 constexpr auto k_background_type_bits =

@@ -606,9 +606,14 @@ class ScopedSpinLock {
 //     future.SetPending();
 //
 //     AddJobOnWorkerThread([&future, do_slow_work, cleanup_function]() mutable {
-//         DEFER { cleanup_function(); }; // Always clean-up.
-//         if (!future.TrySetRunning()) return; // Cancelled.
-//         future.SetResult(do_slow_work());
+//         if (future.TrySetRunning()) { // False if cancelled.
+//             auto result = do_slow_work();
+//             cleanup_function();
+//             future.SetResult(Move(result));
+//         } else {
+//             cleanup_function();
+//         }
+//         future.SetProducerDone(); // The consumer may destroy `future` from here.
 //     });
 // }
 //
@@ -637,8 +642,9 @@ struct Future {
     // thread can check for the presence of this bit and cancel work if needed.
     static constexpr u32 k_cancel_bit = 1u << 31;
 
-    // The working bit is set/cleared by the producer thread. The presence of this bit signifies that the
-    // producer is still using the Future and the consumer must not delete it.
+    // The working bit is set when work is scheduled and cleared by the producer thread in SetProducerDone().
+    // The presence of this bit signifies that the producer is still using the Future and the consumer must
+    // not delete it.
     static constexpr u32 k_working_bit = 1u << 30;
 
     static constexpr u32 k_status_mask = ~(k_cancel_bit | k_working_bit);
@@ -650,7 +656,7 @@ struct Future {
     static bool IsFinished(u32 s) { return (s & k_status_mask) == (u32)Status::Finished; }
     static bool IsInactive(u32 s) { return (s & k_status_mask) == (u32)Status::Inactive; }
     // Only once this is true may the consumer destroy the Future without waiting. A Future that is no longer
-    // in progress can still be in use by the producer for a brief moment.
+    // in progress can still be in use by the producer until it calls SetProducerDone().
     static bool IsProducerDone(u32 s) { return !IsInProgress(s) && !(s & k_working_bit); }
 
     // Thread-safe.
@@ -691,7 +697,7 @@ struct Future {
     void Reset() {
         ASSERT(!IsInProgress());
         // Wait for the producer to finish touching this object before we allow it to be reused or
-        // destroyed. The working bit is cleared very shortly after the status transitions to
+        // destroyed. The producer must call SetProducerDone() very shortly after the status transitions to
         // Finished/Inactive, so this spin is brief.
         BusyWaitForWorkingBitClear();
         if constexpr (!TriviallyCopyable<Type>) {
@@ -755,39 +761,49 @@ struct Future {
     }
 
     // Producer thread.
-    // Returns true if we successfully set to running, false if we were cancelled.
-    // IMPORTANT: if this returns false, you must not touch this object again.
+    // Returns true if we successfully set to running, false if we were cancelled. Either way, the producer
+    // retains the working bit and must call SetProducerDone() when it has finished with this object.
     [[nodiscard]] bool TrySetRunning() {
         while (true) {
             auto current = status.Load(LoadMemoryOrder::Acquire);
             ASSERT((current & k_status_mask) == (u32)Status::Pending);
             ASSERT(current & k_working_bit);
 
-            if (current & k_cancel_bit) {
-                // We've been cancelled before we could start running. We set to Inactive instead of Finished
-                // because the Finished state suggests that there is a valid payload. We retain the cancel bit
-                // so that a reader can see what happened.
-                status.Store((u32)Status::Inactive | k_cancel_bit | k_working_bit, StoreMemoryOrder::Release);
-
-                // We have set the new status, including the working bit. The working bit ensures we are safe
-                // to wake the waiters using the still-valid 'status' memory.
-                WakeWaitingThreads(status, NumWaitingThreads::All);
-
-                // We are done with this object now, we can clear the working bit meaning another thread can
-                // now free this memory if they choose.
-                status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
-
-                return false;
-            }
+            if (current & k_cancel_bit) return false;
 
             if (status.CompareExchangeWeak(current,
                                            (u32)Status::Running | k_working_bit,
                                            RmwMemoryOrder::AcquireRelease,
                                            LoadMemoryOrder::Acquire))
-                // We have successfully set to running and retained the working bit. The producer thread will
-                // continue its work.
                 return true;
         }
+    }
+
+    // Producer thread. The final step: after this returns, you must not touch this object again and the
+    // consumer is free to destroy it. Call it after SetResult(), or after TrySetRunning() returned false.
+    void SetProducerDone() {
+        auto const current = status.Load(LoadMemoryOrder::Acquire);
+        ASSERT(current & k_working_bit);
+
+        switch ((Status)(current & k_status_mask)) {
+            case Status::Pending: {
+                // We were cancelled before we could start running. We set to Inactive instead of Finished
+                // because the Finished state suggests that there is a valid payload. We retain the cancel bit
+                // so that a reader can see what happened.
+                ASSERT(current & k_cancel_bit);
+                status.Store((u32)Status::Inactive | k_cancel_bit | k_working_bit, StoreMemoryOrder::Release);
+
+                // The working bit ensures we are safe to wake the waiters using the still-valid 'status'
+                // memory.
+                WakeWaitingThreads(status, NumWaitingThreads::All);
+                break;
+            }
+            case Status::Finished: break;
+            case Status::Inactive:
+            case Status::Running: PanicIfReached();
+        }
+
+        status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
     }
 
     // Producer/consumer thread. This is the first step in scheduling work.
@@ -799,13 +815,15 @@ struct Future {
         status.Store((u32)Status::Pending | k_working_bit, StoreMemoryOrder::Release);
     }
 
-    // Producer thread. After this returns, you must not touch this object again.
+    // Producer thread. Publishes the result to the consumer. The producer retains the working bit: it may
+    // continue to use this object (and anything else that the consumer keeps alive while the working bit is
+    // set) until it calls SetProducerDone().
     void SetResult(Type const& v) {
         PLACEMENT_NEW(&result_storage) Type(v);
         FinaliseSetResult();
     }
 
-    // Producer thread. After this returns, you must not touch this object again.
+    // Producer thread. As above.
     void SetResult(Type&& v) {
         PLACEMENT_NEW(&result_storage) Type(Move(v));
         FinaliseSetResult();
@@ -841,10 +859,6 @@ struct Future {
         }
 
         WakeWaitingThreads(status, NumWaitingThreads::All);
-
-        // We are done touching status now, we can clear the working bit meaning another thread can now free
-        // this memory.
-        status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
     }
 
     ~Future() {

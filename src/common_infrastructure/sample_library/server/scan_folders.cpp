@@ -128,9 +128,6 @@ ScanFolders::~ScanFolders() {
     for (auto& f : library_read_results)
         auto _ = f.ShutdownAndRelease(k_timeout_ms);
 
-    while (outstanding_async_cleanups.Load(LoadMemoryOrder::Acquire) > 0)
-        SpinLoopPause();
-
     folder_scan_results.Clear();
     library_read_results.Clear();
 }
@@ -200,22 +197,24 @@ void AsyncReadLibrary(ScanFolders& sf, String path, bool lock) {
         sf.is_scanning.Store(true, StoreMemoryOrder::Release);
     }
 
-    sf.outstanding_async_cleanups.FetchAdd(1, RmwMemoryOrder::Relaxed);
-    sf.thread_pool.Async(
-        *future,
-        [path = cloned_path, &sf]() {
-            ScanFolders::LibraryReadResult result {};
-            result.path = result.arena.Clone(path);
-            result.library = DoLibraryReading(path, result.arena, sf.should_read_library);
-            return Move(result);
-        },
-        [path = cloned_path, &sf]() {
-            sf.mutex.Lock();
-            sf.path_pool.Free(path);
-            sf.mutex.Unlock();
-            sf.work_signaller.Signal();
-            sf.outstanding_async_cleanups.FetchSub(1, RmwMemoryOrder::Release);
-        });
+    sf.thread_pool.Async(*future,
+                         ThreadPool::AsyncJob {
+                             .function =
+                                 [path = cloned_path, &sf]() {
+                                     ScanFolders::LibraryReadResult result {};
+                                     result.path = result.arena.Clone(path);
+                                     result.library =
+                                         DoLibraryReading(path, result.arena, sf.should_read_library);
+                                     return Move(result);
+                                 },
+                             .cleanup =
+                                 [path = cloned_path, &sf]() {
+                                     sf.mutex.Lock();
+                                     sf.path_pool.Free(path);
+                                     sf.mutex.Unlock();
+                                 },
+                             .on_published = [&sf]() { sf.work_signaller.Signal(); },
+                         });
 }
 
 void AsyncScanFolder(ScanFolders& sf, String path, bool lock) {
@@ -232,22 +231,23 @@ void AsyncScanFolder(ScanFolders& sf, String path, bool lock) {
         sf.is_scanning.Store(true, StoreMemoryOrder::Release);
     }
 
-    sf.outstanding_async_cleanups.FetchAdd(1, RmwMemoryOrder::Relaxed);
-    sf.thread_pool.Async(
-        *future,
-        [path = cloned_path, &sf]() {
-            ScanFolders::ScanFolderResult result {};
-            result.path = CreateMallocedString(path);
-            result.outcome = DoFolderScanning(sf, path);
-            return Move(result);
-        },
-        [path = cloned_path, &sf]() {
-            sf.mutex.Lock();
-            sf.path_pool.Free(path);
-            sf.mutex.Unlock();
-            sf.work_signaller.Signal();
-            sf.outstanding_async_cleanups.FetchSub(1, RmwMemoryOrder::Release);
-        });
+    sf.thread_pool.Async(*future,
+                         ThreadPool::AsyncJob {
+                             .function =
+                                 [path = cloned_path, &sf]() {
+                                     ScanFolders::ScanFolderResult result {};
+                                     result.path = CreateMallocedString(path);
+                                     result.outcome = DoFolderScanning(sf, path);
+                                     return Move(result);
+                                 },
+                             .cleanup =
+                                 [path = cloned_path, &sf]() {
+                                     sf.mutex.Lock();
+                                     sf.path_pool.Free(path);
+                                     sf.mutex.Unlock();
+                                 },
+                             .on_published = [&sf]() { sf.work_signaller.Signal(); },
+                         });
 }
 
 Optional<ScanFolders::ScanFolderResult> PopCompletedScanFolderResult(ScanFolders& sf) {

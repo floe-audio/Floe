@@ -47,7 +47,6 @@ struct ScanFolders {
     ArenaList<Future<ScanFolderResult>> folder_scan_results {};
     ArenaList<Future<LibraryReadResult>> library_read_results {};
     Atomic<u32> is_scanning {false};
-    Atomic<u32> outstanding_async_cleanups {0};
     bool has_always_scanned_folder {};
 };
 

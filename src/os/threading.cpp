@@ -130,6 +130,12 @@ TEST_CASE(TestFuture) {
         CHECK(future.HasResult());
         CHECK_EQ(future.Result(), 123);
 
+        // The producer still holds the future until it says otherwise.
+        CHECK(!future.IsProducerDone());
+        future.SetProducerDone();
+        CHECK(future.IsProducerDone());
+        CHECK_EQ(future.Result(), 123);
+
         // Reset back to inactive
         future.Reset();
         CHECK(future.IsInactive());
@@ -146,8 +152,13 @@ TEST_CASE(TestFuture) {
 
         CHECK(!future.IsProducerDone());
 
-        // TrySetRunning should fail
+        // TrySetRunning should fail, leaving the future in the producer's hands.
         CHECK(!future.TrySetRunning());
+        CHECK(future.IsCancelled());
+        CHECK(future.IsInProgress());
+        CHECK(!future.IsProducerDone());
+
+        future.SetProducerDone();
         CHECK(future.IsCancelled());
         CHECK(future.IsInactive());
         CHECK(future.IsProducerDone());
@@ -169,6 +180,7 @@ TEST_CASE(TestFuture) {
         future.SetPending();
         CHECK(future.TrySetRunning());
         future.SetResult(456);
+        future.SetProducerDone();
 
         // Cancel after finishing should return false
         CHECK(!future.Cancel());
@@ -188,6 +200,7 @@ TEST_CASE(TestFuture) {
         CHECK(future.IsCancelled());
 
         CHECK(!future.TrySetRunning());
+        future.SetProducerDone();
 
         CHECK(!future.ShutdownAndRelease());
         CHECK(future.IsInactive());
@@ -205,6 +218,7 @@ TEST_CASE(TestFuture) {
                 ASSERT(future.TrySetRunning());
                 SleepThisThread(20);
                 future.SetResult(100);
+                future.SetProducerDone();
             },
             "future-thread");
         DEFER { thread.Join(); };
@@ -232,6 +246,7 @@ TEST_CASE(TestFuture) {
             future.SetPending();
             CHECK(future.TrySetRunning());
             future.SetResult(Tracked {42});
+            future.SetProducerDone();
             CHECK_EQ(future.Result().value, 42);
 
             auto result = future.ReleaseResult();
@@ -246,6 +261,7 @@ TEST_CASE(TestFuture) {
             future.SetPending();
             CHECK(future.TrySetRunning());
             future.SetResult(Tracked {99});
+            future.SetProducerDone();
         }
         CHECK(g_dtor_count > 0);
     }
@@ -292,11 +308,12 @@ TEST_CASE(TestFuture) {
                         random_pause(seed); // Work simulation
 
                         future.SetResult(round);
-                        // We cannot touch the future at this point.
-                    } else {
-                        // Was cancelled - future should be inactive with cancel bit.
-                        // We cannot touch the future at this point.
+
+                        random_pause(seed); // Post-publish work simulation
                     }
+
+                    future.SetProducerDone();
+                    // We cannot touch the future at this point.
                 }
             },
             "producer");

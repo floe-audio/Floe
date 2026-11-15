@@ -20,32 +20,28 @@ static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
                                      Instrument const& inst,
                                      UiSize size,
                                      ThreadPool& thread_pool,
-                                     FloeInstanceIndex instance_index,
-                                     AtomicCountdown& in_flight_instrument_jobs) {
+                                     FloeInstanceIndex instance_index) {
     // We use ValueOr, because we need to have a RefCounted handle, not a _pointer_ to a RefCounted handle
     // since we need to pass the whole handle to the cleanup function.
     auto inst_ref =
         inst.TryGetOpt<sample_lib_server::ResourcePointer<sample_lib::LoadedInstrument>>().ValueOr({});
-    if (inst_ref) {
-        inst_ref.Retain();
-        in_flight_instrument_jobs.Increase();
-    }
+    if (inst_ref) inst_ref.Retain();
 
-    thread_pool.Async(
-        future,
-        [source, size]() -> ImageBytes {
-            ArenaAllocator scratch_arena {PageAllocator::Instance()};
-            auto const bytes = CreateWaveformImage(source, size, PixelsAllocator(), scratch_arena);
-            return {.rgba = bytes.data, .size = size};
-        },
-        [inst_ref, instance_index, &in_flight_instrument_jobs]() mutable { // Capture the RefCounted handle.
-            if (inst_ref) {
-                inst_ref.Release();
-                in_flight_instrument_jobs.CountDown();
-            }
-            RequestGuiUpdate(instance_index);
-        },
-        JobPriority::High);
+    thread_pool.Async(future,
+                      ThreadPool::AsyncJob {
+                          .function = [source, size]() -> ImageBytes {
+                              ArenaAllocator scratch_arena {PageAllocator::Instance()};
+                              auto const bytes =
+                                  CreateWaveformImage(source, size, PixelsAllocator(), scratch_arena);
+                              return {.rgba = bytes.data, .size = size};
+                          },
+                          .cleanup =
+                              [inst_ref]() mutable { // Capture the RefCounted handle.
+                                  if (inst_ref) inst_ref.Release();
+                              },
+                          .on_published = [instance_index]() { RequestGuiUpdate(instance_index); },
+                          .priority = JobPriority::High,
+                      });
 }
 
 static u64 TableKey(u64 source_hash, UiSize size) {
@@ -153,8 +149,7 @@ Optional<ImageID> GetWaveformImage(WaveformImagesTable& table,
                                      inst,
                                      size,
                                      thread_pool,
-                                     instance_index,
-                                     table.in_flight_instrument_jobs);
+                                     instance_index);
     }
 
     return waveform.image_id;
@@ -236,11 +231,6 @@ void Shutdown(WaveformImagesTable& table) {
     for (auto& pixels : table.loading_pixels)
         if (auto image_bytes = pixels.ShutdownAndRelease(10000u)) image_bytes->Free(PixelsAllocator());
 
-    // We must ensure all our Async() cleanup callbacks are completed. Cleanups could happen later and we
-    // can't vouch that things like the sample library server is still valid.
-    auto const wait_result = table.in_flight_instrument_jobs.WaitUntilZero(10000u);
-    ASSERT(wait_result != WaitResult::TimedOut);
-
     table.loading_pixels.Clear();
     table.table.DeleteAll();
 }
@@ -300,6 +290,7 @@ TEST_CASE(TestWaveformImages) {
 
         InvalidateAllWaveformImages(table, renderer);
         CHECK(!future.TrySetRunning()); // The job sees the cancellation.
+        future.SetProducerDone();
 
         EndFrame(table, renderer, {});
         CHECK(EntriesOnlyReferenceLiveFutures(table));

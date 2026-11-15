@@ -61,32 +61,54 @@ struct ThreadPool {
         m_cond_var.WakeOne();
     }
 
-    // The caller owns the future and is responsible for ensuring it outlives the async task.
-    // The cleanup function is always called, regardless of whether the task completed successfully or was
-    // cancelled - this is useful if the function is a lambda that captures some resources that should be
-    // released when the lambda is destroyed.
-    //
-    // IMPORTANT: The cleanup function runs AFTER the Future signals completion (after SetResult or
-    // TrySetRunning clears the working bit). This means Future::ShutdownAndRelease may return before
-    // cleanup has finished executing. If the cleanup captures references to objects that could be
-    // destroyed after ShutdownAndRelease returns, you must use a separate synchronisation mechanism
-    // (e.g. an atomic counter) to ensure cleanup has completed before destroying those objects.
-    void Async(auto& future, auto&& function, auto&& cleanup, JobPriority priority = JobPriority::Normal) {
+    struct AsyncNoOp {
+        void operator()() const {}
+    };
+
+    template <typename Function, typename Cleanup = AsyncNoOp, typename OnPublished = AsyncNoOp>
+    struct AsyncJob {
+        // Produces the result. Skipped if the future was cancelled before the job started.
+        Function function;
+
+        // Always called, even if cancelled: release anything that the job captured. Runs before the result
+        // is published, so the consumer still sees the future as in-progress; it's fine to take locks here.
+        Cleanup cleanup {};
+
+        // Called once the consumer can see the result (not called if cancelled before starting): wake the
+        // consumer up. The consumer might be spinning waiting for this to return, so it must not block.
+        OnPublished on_published {};
+
+        JobPriority priority = JobPriority::Normal;
+    };
+
+    // The caller owns the future and is responsible for ensuring it outlives the async task. Everything in
+    // the job runs before the future's producer is done, so once Future::ShutdownAndRelease has returned (or
+    // Future::IsProducerDone is true) no part of the job is still running. The job's callables are destroyed
+    // after that point, so their captures must not need a destructor - release them in cleanup instead.
+    template <typename Function, typename Cleanup, typename OnPublished>
+    void Async(auto& future, AsyncJob<Function, Cleanup, OnPublished> job) {
         ZoneScoped;
         ASSERT(m_workers.size > 0);
 
         using FutureType = RemoveReference<decltype(future)>;
-        using JobFunctionType = RemoveReference<decltype(function)>;
 
-        static_assert(Same<typename FutureType::ValueType, InvokeResult<JobFunctionType>>);
+        static_assert(Same<typename FutureType::ValueType, InvokeResult<Function>>);
+
+        auto const priority = job.priority;
 
         future.SetPending();
 
         AddJob(
-            [&future, f = Move(function), cleanup = Move(cleanup)]() mutable {
-                DEFER { cleanup(); }; // Always clean-up.
-                if (!future.TrySetRunning()) return;
-                future.SetResult(f());
+            [&future, job = Move(job)]() mutable {
+                if (future.TrySetRunning()) {
+                    auto result = job.function();
+                    job.cleanup();
+                    future.SetResult(Move(result));
+                    job.on_published();
+                } else {
+                    job.cleanup();
+                }
+                future.SetProducerDone();
             },
             priority);
     }

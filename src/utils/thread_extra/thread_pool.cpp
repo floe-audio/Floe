@@ -10,12 +10,10 @@ TEST_CASE(TestAsync) {
     ThreadPool pool;
     pool.Init("test", 2u);
 
-    auto cleanup = []() {};
-
     SUBCASE("basic async with return value") {
         Future<int> future;
         CHECK(!future.IsFinished());
-        pool.Async(future, []() { return 42; }, cleanup);
+        pool.Async(future, ThreadPool::AsyncJob {.function = []() { return 42; }});
         CHECK(future.WaitUntilFinished());
         REQUIRE(future.IsFinished());
         CHECK_EQ(future.Result(), 42);
@@ -27,7 +25,7 @@ TEST_CASE(TestAsync) {
             int value;
         };
         Future<NoDefault> future;
-        pool.Async(future, []() { return NoDefault(99); }, cleanup);
+        pool.Async(future, ThreadPool::AsyncJob {.function = []() { return NoDefault(99); }});
         CHECK(future.WaitUntilFinished());
         REQUIRE(future.IsFinished());
         CHECK_EQ(future.Result().value, 99);
@@ -39,7 +37,7 @@ TEST_CASE(TestAsync) {
         // No result available initially
         CHECK(!future.TryReleaseResult().HasValue());
 
-        pool.Async(future, []() { return 789; }, cleanup);
+        pool.Async(future, ThreadPool::AsyncJob {.function = []() { return 789; }});
         CHECK(future.WaitUntilFinished());
 
         auto result = future.TryReleaseResult();
@@ -55,7 +53,7 @@ TEST_CASE(TestAsync) {
 
     SUBCASE("release result") {
         Future<int> future;
-        pool.Async(future, []() { return 321; }, cleanup);
+        pool.Async(future, ThreadPool::AsyncJob {.function = []() { return 321; }});
         CHECK(future.WaitUntilFinished());
 
         int result = future.ReleaseResult();
@@ -68,15 +66,16 @@ TEST_CASE(TestAsync) {
         Atomic<bool> work_started {false};
         Atomic<bool> do_work {false};
 
-        pool.Async(
-            future,
-            [&]() {
-                work_started.Store(true, StoreMemoryOrder::Release);
-                while (!do_work.Load(LoadMemoryOrder::Acquire))
-                    YieldThisThread();
-                return 999;
-            },
-            cleanup);
+        pool.Async(future,
+                   ThreadPool::AsyncJob {
+                       .function =
+                           [&]() {
+                               work_started.Store(true, StoreMemoryOrder::Release);
+                               while (!do_work.Load(LoadMemoryOrder::Acquire))
+                                   YieldThisThread();
+                               return 999;
+                           },
+                   });
 
         // Wait for work to start
         while (!work_started.Load(LoadMemoryOrder::Acquire))
@@ -89,17 +88,111 @@ TEST_CASE(TestAsync) {
         CHECK(future.IsInactive());
     }
 
+    SUBCASE("cleanup and on_published have finished once the producer is done") {
+        Future<int> future;
+        Atomic<bool> work_started {false};
+        Atomic<bool> do_work {false};
+        Atomic<bool> cleanup_done {false};
+        Atomic<bool> on_published_done {false};
+        Atomic<bool> result_visible_in_on_published {false};
+        Atomic<bool> in_progress_during_cleanup {false};
+
+        pool.Async(
+            future,
+            ThreadPool::AsyncJob {
+                .function =
+                    [&]() {
+                        work_started.Store(true, StoreMemoryOrder::Release);
+                        while (!do_work.Load(LoadMemoryOrder::Acquire))
+                            YieldThisThread();
+                        return 7;
+                    },
+                .cleanup =
+                    [&]() {
+                        in_progress_during_cleanup.Store(future.IsInProgress(), StoreMemoryOrder::Release);
+                        SleepThisThread(5);
+                        cleanup_done.Store(true, StoreMemoryOrder::Release);
+                    },
+                .on_published =
+                    [&]() {
+                        result_visible_in_on_published.Store(future.IsFinished(), StoreMemoryOrder::Release);
+                        SleepThisThread(5);
+                        on_published_done.Store(true, StoreMemoryOrder::Release);
+                    },
+            });
+
+        // If the job hasn't started, shutting down would cancel it.
+        while (!work_started.Load(LoadMemoryOrder::Acquire))
+            YieldThisThread();
+        do_work.Store(true, StoreMemoryOrder::Release);
+
+        CHECK_EQ(*future.ShutdownAndRelease(10000u), 7);
+        CHECK(cleanup_done.Load(LoadMemoryOrder::Acquire));
+        CHECK(on_published_done.Load(LoadMemoryOrder::Acquire));
+        CHECK(in_progress_during_cleanup.Load(LoadMemoryOrder::Acquire));
+        CHECK(result_visible_in_on_published.Load(LoadMemoryOrder::Acquire));
+    }
+
+    SUBCASE("cancelled before starting: cleanup runs, on_published doesn't") {
+        ThreadPool single_thread_pool;
+        single_thread_pool.Init("single", 1u);
+
+        Future<int> blocker;
+        Future<int> future;
+        Atomic<bool> unblock {false};
+        Atomic<bool> function_called {false};
+        Atomic<bool> cleanup_done {false};
+        Atomic<bool> on_published_called {false};
+
+        single_thread_pool.Async(blocker,
+                                 ThreadPool::AsyncJob {
+                                     .function =
+                                         [&]() {
+                                             while (!unblock.Load(LoadMemoryOrder::Acquire))
+                                                 YieldThisThread();
+                                             return 0;
+                                         },
+                                 });
+        single_thread_pool.Async(
+            future,
+            ThreadPool::AsyncJob {
+                .function =
+                    [&]() {
+                        function_called.Store(true, StoreMemoryOrder::Release);
+                        return 1;
+                    },
+                .cleanup =
+                    [&]() {
+                        SleepThisThread(5);
+                        cleanup_done.Store(true, StoreMemoryOrder::Release);
+                    },
+                .on_published = [&]() { on_published_called.Store(true, StoreMemoryOrder::Release); },
+            });
+
+        CHECK(future.Cancel());
+        unblock.Store(true, StoreMemoryOrder::Release);
+
+        CHECK(!future.ShutdownAndRelease(10000u));
+        CHECK(cleanup_done.Load(LoadMemoryOrder::Acquire));
+        CHECK(!function_called.Load(LoadMemoryOrder::Acquire));
+        CHECK(!on_published_called.Load(LoadMemoryOrder::Acquire));
+
+        CHECK_EQ(*blocker.ShutdownAndRelease(10000u), 0);
+    }
+
     SUBCASE("multiple futures concurrently") {
         Array<Future<int>, 5> futures;
         Atomic<int> counter {0};
 
         for (auto [i, future] : Enumerate(futures)) {
-            pool.Async(
-                future,
-                [&counter, i]() {
-                    return counter.FetchAdd((int)i + 1, RmwMemoryOrder::AcquireRelease) + (int)i + 1;
-                },
-                cleanup);
+            pool.Async(future,
+                       ThreadPool::AsyncJob {
+                           .function =
+                               [&counter, i]() {
+                                   return counter.FetchAdd((int)i + 1, RmwMemoryOrder::AcquireRelease) +
+                                          (int)i + 1;
+                               },
+                       });
         }
 
         // Wait for all to complete
@@ -146,20 +239,20 @@ TEST_CASE(TestAsync) {
         starting_gun.Fire();
 
         for (auto [i, future] : Enumerate(futures)) {
-            pool.Async(
-                future,
-                [i, &total_completed]() {
-                    // Simulate some work with random duration
-                    auto seed = RandomSeed();
-                    auto work_cycles = RandomIntInRange(seed, 1, 100);
-                    for (auto _ : Range(work_cycles))
-                        SpinLoopPause();
+            pool.Async(future,
+                       ThreadPool::AsyncJob {
+                           .function =
+                               [i, &total_completed]() {
+                                   // Simulate some work with random duration
+                                   auto seed = RandomSeed();
+                                   auto work_cycles = RandomIntInRange(seed, 1, 100);
+                                   for (auto _ : Range(work_cycles))
+                                       SpinLoopPause();
 
-                    total_completed.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
-                    return (int)i;
-                },
-                []() {} // empty cleanup
-            );
+                                   total_completed.FetchAdd(1, RmwMemoryOrder::AcquireRelease);
+                                   return (int)i;
+                               },
+                       });
         }
 
         // Rapidly check status of all futures, randomly cancel some
