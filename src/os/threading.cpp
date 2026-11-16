@@ -84,19 +84,26 @@ Optional<String> GetThreadLocalThreadName() {
 
 } // namespace detail
 
+WaitDeadline::WaitDeadline(Optional<u32> timeout_milliseconds)
+    : timeout_milliseconds(timeout_milliseconds)
+    , start_time_point_raw(timeout_milliseconds ? TimePoint::Now().Raw() : 0) {}
+
+Optional<u32> WaitDeadline::RemainingMilliseconds() const {
+    if (!timeout_milliseconds) return k_nullopt;
+    auto const elapsed_milliseconds =
+        SecondsToMilliseconds(TimePoint::Now() - TimePoint {start_time_point_raw});
+    auto const remaining_milliseconds = (f64)*timeout_milliseconds - elapsed_milliseconds;
+    if (remaining_milliseconds <= 0) return 0u;
+    return Min((u32)Ceil(remaining_milliseconds), *timeout_milliseconds);
+}
+
 bool WaitIfValueIsExpectedStrong(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds) {
-    Optional<Stopwatch> timer = {};
-    if (timeout_milliseconds) timer.Emplace();
+    WaitDeadline const deadline {timeout_milliseconds};
 
     while (value.Load(LoadMemoryOrder::Acquire) == expected) {
-        Optional<u32> remaining_timeout = {};
-        if (timeout_milliseconds) {
-            auto const elapsed_ms = timer->MillisecondsElapsed();
-            if (elapsed_ms >= *timeout_milliseconds) return false; // Already timed out.
-            remaining_timeout = CheckedCast<u32>(*timeout_milliseconds - elapsed_ms);
-        }
-
-        if (WaitIfValueIsExpected(value, expected, remaining_timeout) == WaitResult::TimedOut) return false;
+        auto const remaining_milliseconds = deadline.RemainingMilliseconds();
+        if (remaining_milliseconds && *remaining_milliseconds == 0) return false;
+        WaitIfValueIsExpected(value, expected, remaining_milliseconds);
     }
 
     return true;
@@ -226,6 +233,55 @@ TEST_CASE(TestFuture) {
         CHECK(future.WaitUntilProducerDone(2000u));
         CHECK(future.IsFinished());
         CHECK_EQ(future.Result(), 100);
+    }
+
+    SUBCASE("wait times out while pending") {
+        // See the macOS note in TestFutex.
+        if constexpr (!IS_MACOS) {
+            Future<int> future;
+            future.SetPending();
+
+            Stopwatch const stopwatch;
+            CHECK(!future.WaitUntilProducerDone(20u));
+            CHECK(stopwatch.MillisecondsElapsed() >= 19.0);
+
+            CHECK(future.TrySetRunning());
+            future.SetResult(1);
+            future.SetProducerDone();
+            CHECK(future.WaitUntilProducerDone(0u));
+            CHECK_EQ(*future.ShutdownAndRelease(), 1);
+        }
+    }
+
+    SUBCASE("wait timeout covers the producer's work after setting the result") {
+        Future<int> future;
+        Atomic<bool> producer_may_finish {false};
+        Thread thread;
+
+        future.SetPending();
+
+        thread.Start(
+            [&future, &producer_may_finish]() {
+                ASSERT(future.TrySetRunning());
+                future.SetResult(100);
+                while (!producer_may_finish.Load(LoadMemoryOrder::Acquire))
+                    SleepThisThread(1);
+                future.SetProducerDone();
+            },
+            "future-thread");
+        DEFER { thread.Join(); };
+
+        while (!future.IsFinished())
+            YieldThisThread();
+
+        Stopwatch const stopwatch;
+        CHECK(!future.WaitUntilProducerDone(20u));
+        CHECK(stopwatch.MillisecondsElapsed() >= 19.0);
+        CHECK(!future.IsProducerDone());
+
+        producer_may_finish.Store(true, StoreMemoryOrder::Release);
+        CHECK(future.WaitUntilProducerDone(5000u));
+        CHECK_EQ(*future.ShutdownAndRelease(), 100);
     }
 
     SUBCASE("non-trivially-copyable type") {

@@ -246,6 +246,17 @@ void WakeWaitingThreads(Atomic<u32>& value, NumWaitingThreads num_waiters);
 // Same as WaitIfValueIsExpected, but without spurious returns. Returns false if timed out.
 bool WaitIfValueIsExpectedStrong(Atomic<u32>& value, u32 expected, Optional<u32> timeout_milliseconds = {});
 
+// Tracks a single timeout across multiple waits.
+struct WaitDeadline {
+    explicit WaitDeadline(Optional<u32> timeout_milliseconds);
+
+    // Nullopt if there is no timeout, 0 if the timeout has expired. Never rounds down to 0.
+    Optional<u32> RemainingMilliseconds() const;
+
+    Optional<u32> timeout_milliseconds;
+    s64 start_time_point_raw {};
+};
+
 // llvm-project/libc/src/__support/threads/sleep.h
 inline static void SpinLoopPause() {
 #if defined(__X86_64__)
@@ -708,15 +719,18 @@ struct Future {
 
     // Consumer thread. Returns false if timed out.
     bool WaitUntilProducerDone(Optional<u32> timeout_milliseconds = {}) {
+        WaitDeadline const deadline {timeout_milliseconds};
         while (true) {
             auto const s = status.Load(LoadMemoryOrder::Acquire);
+            if (IsProducerDone(s)) return true;
 
-            if (IsFinished(s) || IsInactive(s)) {
-                if (s & k_producer_using_bit) SpinUntilProducerDone();
-                return true;
-            }
+            auto const remaining_milliseconds = deadline.RemainingMilliseconds();
+            if (remaining_milliseconds && *remaining_milliseconds == 0) return false;
 
-            if (WaitIfValueIsExpected(status, s, timeout_milliseconds) == WaitResult::TimedOut) return false;
+            if (IsInProgress(s))
+                WaitIfValueIsExpected(status, s, remaining_milliseconds);
+            else
+                SpinLoopPause(); // Clearing the producer-using bit doesn't wake waiters.
         }
     }
 
