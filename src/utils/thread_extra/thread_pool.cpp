@@ -13,8 +13,8 @@ TEST_CASE(TestAsync) {
     SUBCASE("basic async with return value") {
         Future<int> future;
         CHECK(!future.IsFinished());
-        pool.Async(future, ThreadPool::AsyncJob {.function = []() { return 42; }});
-        CHECK(future.WaitUntilFinished());
+        pool.Async(future, ThreadPool::AsyncJob {.work = []() { return 42; }});
+        CHECK(future.WaitUntilProducerDone());
         REQUIRE(future.IsFinished());
         CHECK_EQ(future.Result(), 42);
     }
@@ -25,8 +25,8 @@ TEST_CASE(TestAsync) {
             int value;
         };
         Future<NoDefault> future;
-        pool.Async(future, ThreadPool::AsyncJob {.function = []() { return NoDefault(99); }});
-        CHECK(future.WaitUntilFinished());
+        pool.Async(future, ThreadPool::AsyncJob {.work = []() { return NoDefault(99); }});
+        CHECK(future.WaitUntilProducerDone());
         REQUIRE(future.IsFinished());
         CHECK_EQ(future.Result().value, 99);
     }
@@ -37,8 +37,8 @@ TEST_CASE(TestAsync) {
         // No result available initially
         CHECK(!future.TryReleaseResult().HasValue());
 
-        pool.Async(future, ThreadPool::AsyncJob {.function = []() { return 789; }});
-        CHECK(future.WaitUntilFinished());
+        pool.Async(future, ThreadPool::AsyncJob {.work = []() { return 789; }});
+        CHECK(future.WaitUntilProducerDone());
 
         auto result = future.TryReleaseResult();
         REQUIRE(result.HasValue());
@@ -53,8 +53,8 @@ TEST_CASE(TestAsync) {
 
     SUBCASE("release result") {
         Future<int> future;
-        pool.Async(future, ThreadPool::AsyncJob {.function = []() { return 321; }});
-        CHECK(future.WaitUntilFinished());
+        pool.Async(future, ThreadPool::AsyncJob {.work = []() { return 321; }});
+        CHECK(future.WaitUntilProducerDone());
 
         int result = future.ReleaseResult();
         CHECK_EQ(result, 321);
@@ -68,7 +68,7 @@ TEST_CASE(TestAsync) {
 
         pool.Async(future,
                    ThreadPool::AsyncJob {
-                       .function =
+                       .work =
                            [&]() {
                                work_started.Store(true, StoreMemoryOrder::Release);
                                while (!do_work.Load(LoadMemoryOrder::Acquire))
@@ -88,19 +88,19 @@ TEST_CASE(TestAsync) {
         CHECK(future.IsInactive());
     }
 
-    SUBCASE("cleanup and on_published have finished once the producer is done") {
+    SUBCASE("cleanup and on_result_set have finished once the producer is done") {
         Future<int> future;
         Atomic<bool> work_started {false};
         Atomic<bool> do_work {false};
         Atomic<bool> cleanup_done {false};
-        Atomic<bool> on_published_done {false};
-        Atomic<bool> result_visible_in_on_published {false};
+        Atomic<bool> on_result_set_done {false};
+        Atomic<bool> result_visible_in_on_result_set {false};
         Atomic<bool> in_progress_during_cleanup {false};
 
         pool.Async(
             future,
             ThreadPool::AsyncJob {
-                .function =
+                .work =
                     [&]() {
                         work_started.Store(true, StoreMemoryOrder::Release);
                         while (!do_work.Load(LoadMemoryOrder::Acquire))
@@ -113,11 +113,11 @@ TEST_CASE(TestAsync) {
                         SleepThisThread(5);
                         cleanup_done.Store(true, StoreMemoryOrder::Release);
                     },
-                .on_published =
+                .on_result_set =
                     [&]() {
-                        result_visible_in_on_published.Store(future.IsFinished(), StoreMemoryOrder::Release);
+                        result_visible_in_on_result_set.Store(future.IsFinished(), StoreMemoryOrder::Release);
                         SleepThisThread(5);
-                        on_published_done.Store(true, StoreMemoryOrder::Release);
+                        on_result_set_done.Store(true, StoreMemoryOrder::Release);
                     },
             });
 
@@ -128,25 +128,25 @@ TEST_CASE(TestAsync) {
 
         CHECK_EQ(*future.ShutdownAndRelease(10000u), 7);
         CHECK(cleanup_done.Load(LoadMemoryOrder::Acquire));
-        CHECK(on_published_done.Load(LoadMemoryOrder::Acquire));
+        CHECK(on_result_set_done.Load(LoadMemoryOrder::Acquire));
         CHECK(in_progress_during_cleanup.Load(LoadMemoryOrder::Acquire));
-        CHECK(result_visible_in_on_published.Load(LoadMemoryOrder::Acquire));
+        CHECK(result_visible_in_on_result_set.Load(LoadMemoryOrder::Acquire));
     }
 
-    SUBCASE("cancelled before starting: cleanup runs, on_published doesn't") {
+    SUBCASE("cancelled before starting: cleanup runs, on_result_set doesn't") {
         ThreadPool single_thread_pool;
         single_thread_pool.Init("single", 1u);
 
         Future<int> blocker;
         Future<int> future;
         Atomic<bool> unblock {false};
-        Atomic<bool> function_called {false};
+        Atomic<bool> work_called {false};
         Atomic<bool> cleanup_done {false};
-        Atomic<bool> on_published_called {false};
+        Atomic<bool> on_result_set_called {false};
 
         single_thread_pool.Async(blocker,
                                  ThreadPool::AsyncJob {
-                                     .function =
+                                     .work =
                                          [&]() {
                                              while (!unblock.Load(LoadMemoryOrder::Acquire))
                                                  YieldThisThread();
@@ -156,9 +156,9 @@ TEST_CASE(TestAsync) {
         single_thread_pool.Async(
             future,
             ThreadPool::AsyncJob {
-                .function =
+                .work =
                     [&]() {
-                        function_called.Store(true, StoreMemoryOrder::Release);
+                        work_called.Store(true, StoreMemoryOrder::Release);
                         return 1;
                     },
                 .cleanup =
@@ -166,7 +166,7 @@ TEST_CASE(TestAsync) {
                         SleepThisThread(5);
                         cleanup_done.Store(true, StoreMemoryOrder::Release);
                     },
-                .on_published = [&]() { on_published_called.Store(true, StoreMemoryOrder::Release); },
+                .on_result_set = [&]() { on_result_set_called.Store(true, StoreMemoryOrder::Release); },
             });
 
         CHECK(future.Cancel());
@@ -174,8 +174,8 @@ TEST_CASE(TestAsync) {
 
         CHECK(!future.ShutdownAndRelease(10000u));
         CHECK(cleanup_done.Load(LoadMemoryOrder::Acquire));
-        CHECK(!function_called.Load(LoadMemoryOrder::Acquire));
-        CHECK(!on_published_called.Load(LoadMemoryOrder::Acquire));
+        CHECK(!work_called.Load(LoadMemoryOrder::Acquire));
+        CHECK(!on_result_set_called.Load(LoadMemoryOrder::Acquire));
 
         CHECK_EQ(*blocker.ShutdownAndRelease(10000u), 0);
     }
@@ -187,7 +187,7 @@ TEST_CASE(TestAsync) {
         for (auto [i, future] : Enumerate(futures)) {
             pool.Async(future,
                        ThreadPool::AsyncJob {
-                           .function =
+                           .work =
                                [&counter, i]() {
                                    return counter.FetchAdd((int)i + 1, RmwMemoryOrder::AcquireRelease) +
                                           (int)i + 1;
@@ -197,7 +197,7 @@ TEST_CASE(TestAsync) {
 
         // Wait for all to complete
         for (auto& future : futures) {
-            CHECK(future.WaitUntilFinished());
+            CHECK(future.WaitUntilProducerDone());
             CHECK(future.IsFinished());
         }
 
@@ -241,7 +241,7 @@ TEST_CASE(TestAsync) {
         for (auto [i, future] : Enumerate(futures)) {
             pool.Async(future,
                        ThreadPool::AsyncJob {
-                           .function =
+                           .work =
                                [i, &total_completed]() {
                                    // Simulate some work with random duration
                                    auto seed = RandomSeed();

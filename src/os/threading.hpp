@@ -634,20 +634,20 @@ struct Future {
     enum class Status : u8 {
         Inactive, // Unscheduled, no result.
         Pending, // Scheduled to be filled but not started yet. Consumer must not read result.
-        Running, // In progress. Consumer must not read result.
-        Finished, // Completed, result is valid.
+        Running, // Producer is doing the work. Consumer must not read result.
+        Finished, // Result is valid.
     };
 
     // The cancel bit is set/cleared by the consumer thread. The producer never changes it. The producer
     // thread can check for the presence of this bit and cancel work if needed.
     static constexpr u32 k_cancel_bit = 1u << 31;
 
-    // The working bit is set when work is scheduled and cleared by the producer thread in SetProducerDone().
-    // The presence of this bit signifies that the producer is still using the Future and the consumer must
-    // not delete it.
-    static constexpr u32 k_working_bit = 1u << 30;
+    // The producer-using bit is set when work is scheduled and cleared by the producer thread in
+    // SetProducerDone(). The presence of this bit signifies that the producer is still using the Future and
+    // the consumer must not delete it.
+    static constexpr u32 k_producer_using_bit = 1u << 30;
 
-    static constexpr u32 k_status_mask = ~(k_cancel_bit | k_working_bit);
+    static constexpr u32 k_status_mask = ~(k_cancel_bit | k_producer_using_bit);
 
     static bool IsInProgress(u32 s) {
         return IsAnyOf(s & k_status_mask, Array {(u32)Status::Pending, (u32)Status::Running});
@@ -657,7 +657,7 @@ struct Future {
     static bool IsInactive(u32 s) { return (s & k_status_mask) == (u32)Status::Inactive; }
     // Only once this is true may the consumer destroy the Future without waiting. A Future that is no longer
     // in progress can still be in use by the producer until it calls SetProducerDone().
-    static bool IsProducerDone(u32 s) { return !IsInProgress(s) && !(s & k_working_bit); }
+    static bool IsProducerDone(u32 s) { return !IsInProgress(s) && !(s & k_producer_using_bit); }
 
     // Thread-safe.
     bool IsFinished() const { return IsFinished(status.Load(LoadMemoryOrder::Acquire)); }
@@ -699,7 +699,7 @@ struct Future {
         // Wait for the producer to finish touching this object before we allow it to be reused or
         // destroyed. The producer must call SetProducerDone() very shortly after the status transitions to
         // Finished/Inactive, so this spin is brief.
-        BusyWaitForWorkingBitClear();
+        SpinUntilProducerDone();
         if constexpr (!TriviallyCopyable<Type>) {
             if (IsFinished()) RawResult().~Type();
         }
@@ -707,12 +707,12 @@ struct Future {
     }
 
     // Consumer thread. Returns false if timed out.
-    bool WaitUntilFinished(Optional<u32> timeout_milliseconds = {}) {
+    bool WaitUntilProducerDone(Optional<u32> timeout_milliseconds = {}) {
         while (true) {
             auto const s = status.Load(LoadMemoryOrder::Acquire);
 
             if (IsFinished(s) || IsInactive(s)) {
-                if (s & k_working_bit) BusyWaitForWorkingBitClear();
+                if (s & k_producer_using_bit) SpinUntilProducerDone();
                 return true;
             }
 
@@ -744,7 +744,7 @@ struct Future {
         auto const s = status.Load(LoadMemoryOrder::Acquire);
         switch ((Status)(s & k_status_mask)) {
             case Status::Finished:
-                if (s & k_working_bit) BusyWaitForWorkingBitClear();
+                if (s & k_producer_using_bit) SpinUntilProducerDone();
                 return ReleaseResult();
 
             case Status::Inactive: Reset(); return {};
@@ -752,7 +752,8 @@ struct Future {
             case Status::Pending:
             case Status::Running: {
                 if (!(s & k_cancel_bit)) status.FetchOr(k_cancel_bit, RmwMemoryOrder::AcquireRelease);
-                if (!WaitUntilFinished(timeout_milliseconds)) Panic("Future::ShutdownAndRelease timed out");
+                if (!WaitUntilProducerDone(timeout_milliseconds))
+                    Panic("Future::ShutdownAndRelease timed out");
                 if (IsFinished()) return ReleaseResult();
                 Reset();
                 return {};
@@ -762,17 +763,17 @@ struct Future {
 
     // Producer thread.
     // Returns true if we successfully set to running, false if we were cancelled. Either way, the producer
-    // retains the working bit and must call SetProducerDone() when it has finished with this object.
+    // is still using this object and must call SetProducerDone() when it has finished with it.
     [[nodiscard]] bool TrySetRunning() {
         while (true) {
             auto current = status.Load(LoadMemoryOrder::Acquire);
             ASSERT((current & k_status_mask) == (u32)Status::Pending);
-            ASSERT(current & k_working_bit);
+            ASSERT(current & k_producer_using_bit);
 
             if (current & k_cancel_bit) return false;
 
             if (status.CompareExchangeWeak(current,
-                                           (u32)Status::Running | k_working_bit,
+                                           (u32)Status::Running | k_producer_using_bit,
                                            RmwMemoryOrder::AcquireRelease,
                                            LoadMemoryOrder::Acquire))
                 return true;
@@ -783,7 +784,7 @@ struct Future {
     // consumer is free to destroy it. Call it after SetResult(), or after TrySetRunning() returned false.
     void SetProducerDone() {
         auto const current = status.Load(LoadMemoryOrder::Acquire);
-        ASSERT(current & k_working_bit);
+        ASSERT(current & k_producer_using_bit);
 
         switch ((Status)(current & k_status_mask)) {
             case Status::Pending: {
@@ -791,10 +792,11 @@ struct Future {
                 // because the Finished state suggests that there is a valid payload. We retain the cancel bit
                 // so that a reader can see what happened.
                 ASSERT(current & k_cancel_bit);
-                status.Store((u32)Status::Inactive | k_cancel_bit | k_working_bit, StoreMemoryOrder::Release);
+                status.Store((u32)Status::Inactive | k_cancel_bit | k_producer_using_bit,
+                             StoreMemoryOrder::Release);
 
-                // The working bit ensures we are safe to wake the waiters using the still-valid 'status'
-                // memory.
+                // The producer-using bit ensures we are safe to wake the waiters using the still-valid
+                // 'status' memory.
                 WakeWaitingThreads(status, NumWaitingThreads::All);
                 break;
             }
@@ -803,35 +805,35 @@ struct Future {
             case Status::Running: PanicIfReached();
         }
 
-        status.FetchAnd(~k_working_bit, RmwMemoryOrder::Release);
+        status.FetchAnd(~k_producer_using_bit, RmwMemoryOrder::Release);
     }
 
     // Producer/consumer thread. This is the first step in scheduling work.
     void SetPending() {
         ASSERT(IsInactive());
-        // A producer that saw a cancellation may be about to clear the working bit; our new working bit must
-        // not be the one it clears.
-        BusyWaitForWorkingBitClear();
-        status.Store((u32)Status::Pending | k_working_bit, StoreMemoryOrder::Release);
+        // A producer that saw a cancellation may be about to clear the producer-using bit; the one we set
+        // must not be the one it clears.
+        SpinUntilProducerDone();
+        status.Store((u32)Status::Pending | k_producer_using_bit, StoreMemoryOrder::Release);
     }
 
-    // Producer thread. Publishes the result to the consumer. The producer retains the working bit: it may
-    // continue to use this object (and anything else that the consumer keeps alive while the working bit is
-    // set) until it calls SetProducerDone().
+    // Producer thread. Sets the result; the consumer can see it from here. The producer is still using
+    // this object: it may continue to do so (and to use anything else that the consumer keeps alive until
+    // the producer is done) until it calls SetProducerDone().
     void SetResult(Type const& v) {
         PLACEMENT_NEW(&result_storage) Type(v);
-        FinaliseSetResult();
+        SetFinished();
     }
 
     // Producer thread. As above.
     void SetResult(Type&& v) {
         PLACEMENT_NEW(&result_storage) Type(Move(v));
-        FinaliseSetResult();
+        SetFinished();
     }
 
     // Consumer thread. Private.
-    void BusyWaitForWorkingBitClear() {
-        while (status.Load(LoadMemoryOrder::Acquire) & k_working_bit) {
+    void SpinUntilProducerDone() {
+        while (status.Load(LoadMemoryOrder::Acquire) & k_producer_using_bit) {
             // Busy spin - this should be very brief.
             SpinLoopPause();
         }
@@ -841,18 +843,19 @@ struct Future {
     Type& RawResult() { return *(Type*)result_storage.data; }
 
     // Private.
-    void FinaliseSetResult() {
+    void SetFinished() {
         while (true) {
             auto current = status.Load(LoadMemoryOrder::Acquire);
 
             // We should only be here if TrySetRunning succeeded.
             ASSERT((Status)(current & k_status_mask) == Status::Running);
-            ASSERT(current & k_working_bit);
+            ASSERT(current & k_producer_using_bit);
 
             // Try to exchange to finished, ensuring we retain the cancel bit. We might have been cancelled
             // while running - we couldn't act on it, but we retain the information for the reader to see.
             if (status.CompareExchangeWeak(current,
-                                           (u32)Status::Finished | k_working_bit | (current & k_cancel_bit),
+                                           (u32)Status::Finished | k_producer_using_bit |
+                                               (current & k_cancel_bit),
                                            RmwMemoryOrder::AcquireRelease,
                                            LoadMemoryOrder::Acquire))
                 break;

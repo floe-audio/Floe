@@ -128,11 +128,11 @@ static void AsyncLoadIcon(sample_lib::LibraryId lib_id,
     thread_pool.Async(
         result,
         ThreadPool::AsyncJob {
-            .function = [lib_id = lib_id,
-                         &server,
-                         log_failure,
-                         desired_icon_size = CheckedCast<u16>(Ceil(WwToPixels(k_library_icon_standard_size)) *
-                                                              2)]() -> LibraryImages::LoadedIcon {
+            .work = [lib_id = lib_id,
+                     &server,
+                     log_failure,
+                     desired_icon_size = CheckedCast<u16>(Ceil(WwToPixels(k_library_icon_standard_size)) *
+                                                          2)]() -> LibraryImages::LoadedIcon {
                 ArenaAllocator scratch_arena {PageAllocator::Instance()};
                 auto const pixels = ({
                     ImagePixelsOrFailure p = LibraryImages::LoadFailure::Missing;
@@ -154,7 +154,7 @@ static void AsyncLoadIcon(sample_lib::LibraryId lib_id,
                     return source.Clone(ImageBytesAllocator());
                 })};
             },
-            .on_published = [instance_index]() { RequestGuiUpdate(instance_index); },
+            .on_result_set = [instance_index]() { RequestGuiUpdate(instance_index); },
         });
 }
 
@@ -180,13 +180,13 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryId lib_id,
     thread_pool.Async(
         result,
         ThreadPool::AsyncJob {
-            .function = [lib_id,
-                         reload_background,
-                         reload_blurred_background,
-                         blur_options,
-                         &server,
-                         log_failure,
-                         window_width = GuiIo().in.window_size.width]() -> LibraryImages::LoadedBackgrounds {
+            .work = [lib_id,
+                     reload_background,
+                     reload_blurred_background,
+                     blur_options,
+                     &server,
+                     log_failure,
+                     window_width = GuiIo().in.window_size.width]() -> LibraryImages::LoadedBackgrounds {
                 ArenaAllocator scratch_arena {PageAllocator::Instance()};
 
                 auto const pixels_or_failure = ({
@@ -231,7 +231,7 @@ static void AsyncLoadBackgrounds(sample_lib::LibraryId lib_id,
 
                 return result;
             },
-            .on_published = [instance_index]() { RequestGuiUpdate(instance_index); },
+            .on_result_set = [instance_index]() { RequestGuiUpdate(instance_index); },
             .priority = JobPriority::High,
         });
 }

@@ -29,7 +29,7 @@ static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
 
     thread_pool.Async(future,
                       ThreadPool::AsyncJob {
-                          .function = [source, size]() -> ImageBytes {
+                          .work = [source, size]() -> ImageBytes {
                               ArenaAllocator scratch_arena {PageAllocator::Instance()};
                               auto const bytes =
                                   CreateWaveformImage(source, size, PixelsAllocator(), scratch_arena);
@@ -39,7 +39,7 @@ static void CreateWaveformImageAsync(WaveformImage::FuturePixels& future,
                               [inst_ref]() mutable { // Capture the RefCounted handle.
                                   if (inst_ref) inst_ref.Release();
                               },
-                          .on_published = [instance_index]() { RequestGuiUpdate(instance_index); },
+                          .on_result_set = [instance_index]() { RequestGuiUpdate(instance_index); },
                           .priority = JobPriority::High,
                       });
 }

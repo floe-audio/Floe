@@ -164,15 +164,15 @@ TEST_CASE(TestFuture) {
         CHECK(future.IsProducerDone());
     }
 
-    SUBCASE("producer is not done while the working bit is set") {
+    SUBCASE("producer is not done while the producer-using bit is set") {
         using F = Future<int>;
         CHECK(F::IsProducerDone((u32)F::Status::Inactive));
         CHECK(F::IsProducerDone((u32)F::Status::Inactive | F::k_cancel_bit));
         CHECK(F::IsProducerDone((u32)F::Status::Finished));
-        CHECK(!F::IsProducerDone((u32)F::Status::Inactive | F::k_cancel_bit | F::k_working_bit));
-        CHECK(!F::IsProducerDone((u32)F::Status::Finished | F::k_working_bit));
-        CHECK(!F::IsProducerDone((u32)F::Status::Pending | F::k_working_bit));
-        CHECK(!F::IsProducerDone((u32)F::Status::Running | F::k_working_bit));
+        CHECK(!F::IsProducerDone((u32)F::Status::Inactive | F::k_cancel_bit | F::k_producer_using_bit));
+        CHECK(!F::IsProducerDone((u32)F::Status::Finished | F::k_producer_using_bit));
+        CHECK(!F::IsProducerDone((u32)F::Status::Pending | F::k_producer_using_bit));
+        CHECK(!F::IsProducerDone((u32)F::Status::Running | F::k_producer_using_bit));
     }
 
     SUBCASE("future cancellation after finishing") {
@@ -223,7 +223,7 @@ TEST_CASE(TestFuture) {
             "future-thread");
         DEFER { thread.Join(); };
 
-        CHECK(future.WaitUntilFinished(2000u));
+        CHECK(future.WaitUntilProducerDone(2000u));
         CHECK(future.IsFinished());
         CHECK_EQ(future.Result(), 100);
     }
@@ -309,7 +309,7 @@ TEST_CASE(TestFuture) {
 
                         future.SetResult(round);
 
-                        random_pause(seed); // Post-publish work simulation
+                        random_pause(seed); // Post-SetResult work simulation
                     }
 
                     future.SetProducerDone();
@@ -341,7 +341,7 @@ TEST_CASE(TestFuture) {
                     auto const cancelled = future.Cancel();
                     if (cancelled) CHECK(future.IsCancelled());
 
-                    CHECK(future.WaitUntilFinished(5000u));
+                    CHECK(future.WaitUntilProducerDone(5000u));
                     if (cancelled) CHECK(future.IsCancelled());
                     if (future.IsInactive()) {
                         // Fine, the producer was cancelled before starting.
@@ -355,7 +355,7 @@ TEST_CASE(TestFuture) {
                     break;
                 }
                 case 1: { // Wait for result
-                    CHECK(future.WaitUntilFinished(5000u));
+                    CHECK(future.WaitUntilProducerDone(5000u));
 
                     // Should have correctly completed.
                     REQUIRE(future.HasResult());

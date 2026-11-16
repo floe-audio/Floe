@@ -199,7 +199,7 @@ void AsyncReadLibrary(ScanFolders& sf, String path, bool lock) {
 
     sf.thread_pool.Async(*future,
                          ThreadPool::AsyncJob {
-                             .function =
+                             .work =
                                  [path = cloned_path, &sf]() {
                                      ScanFolders::LibraryReadResult result {};
                                      result.path = result.arena.Clone(path);
@@ -213,7 +213,7 @@ void AsyncReadLibrary(ScanFolders& sf, String path, bool lock) {
                                      sf.path_pool.Free(path);
                                      sf.mutex.Unlock();
                                  },
-                             .on_published = [&sf]() { sf.work_signaller.Signal(); },
+                             .on_result_set = [&sf]() { sf.work_signaller.Signal(); },
                          });
 }
 
@@ -233,7 +233,7 @@ void AsyncScanFolder(ScanFolders& sf, String path, bool lock) {
 
     sf.thread_pool.Async(*future,
                          ThreadPool::AsyncJob {
-                             .function =
+                             .work =
                                  [path = cloned_path, &sf]() {
                                      ScanFolders::ScanFolderResult result {};
                                      result.path = CreateMallocedString(path);
@@ -246,7 +246,7 @@ void AsyncScanFolder(ScanFolders& sf, String path, bool lock) {
                                      sf.path_pool.Free(path);
                                      sf.mutex.Unlock();
                                  },
-                             .on_published = [&sf]() { sf.work_signaller.Signal(); },
+                             .on_result_set = [&sf]() { sf.work_signaller.Signal(); },
                          });
 }
 

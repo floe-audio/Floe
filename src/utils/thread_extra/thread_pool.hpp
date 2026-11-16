@@ -65,18 +65,18 @@ struct ThreadPool {
         void operator()() const {}
     };
 
-    template <typename Function, typename Cleanup = AsyncNoOp, typename OnPublished = AsyncNoOp>
+    template <typename Work, typename Cleanup = AsyncNoOp, typename OnResultSet = AsyncNoOp>
     struct AsyncJob {
         // Produces the result. Skipped if the future was cancelled before the job started.
-        Function function;
+        Work work;
 
         // Always called, even if cancelled: release anything that the job captured. Runs before the result
-        // is published, so the consumer still sees the future as in-progress; it's fine to take locks here.
+        // is set, so the consumer still sees the future as in-progress; it's fine to take locks here.
         Cleanup cleanup {};
 
         // Called once the consumer can see the result (not called if cancelled before starting): wake the
         // consumer up. The consumer might be spinning waiting for this to return, so it must not block.
-        OnPublished on_published {};
+        OnResultSet on_result_set {};
 
         JobPriority priority = JobPriority::Normal;
     };
@@ -85,14 +85,14 @@ struct ThreadPool {
     // the job runs before the future's producer is done, so once Future::ShutdownAndRelease has returned (or
     // Future::IsProducerDone is true) no part of the job is still running. The job's callables are destroyed
     // after that point, so their captures must not need a destructor - release them in cleanup instead.
-    template <typename Function, typename Cleanup, typename OnPublished>
-    void Async(auto& future, AsyncJob<Function, Cleanup, OnPublished> job) {
+    template <typename Work, typename Cleanup, typename OnResultSet>
+    void Async(auto& future, AsyncJob<Work, Cleanup, OnResultSet> job) {
         ZoneScoped;
         ASSERT(m_workers.size > 0);
 
         using FutureType = RemoveReference<decltype(future)>;
 
-        static_assert(Same<typename FutureType::ValueType, InvokeResult<Function>>);
+        static_assert(Same<typename FutureType::ValueType, InvokeResult<Work>>);
 
         auto const priority = job.priority;
 
@@ -101,10 +101,10 @@ struct ThreadPool {
         AddJob(
             [&future, job = Move(job)]() mutable {
                 if (future.TrySetRunning()) {
-                    auto result = job.function();
+                    auto result = job.work();
                     job.cleanup();
                     future.SetResult(Move(result));
-                    job.on_published();
+                    job.on_result_set();
                 } else {
                     job.cleanup();
                 }
