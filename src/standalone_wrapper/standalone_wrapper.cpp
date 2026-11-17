@@ -892,6 +892,7 @@ struct OfflineRenderOptions {
     String out_flac_path;
     String events_path;
     f64 sample_rate;
+    f32 gain_db;
 };
 
 struct RunOptions {
@@ -1152,19 +1153,28 @@ RunOfflineRender(Standalone& standalone, RunOptions const& run_options, ArenaAll
     }
     render_thread.Join();
 
-    if (!WriteFlacFile(options.out_flac_path,
-                       {
-                           .sample_rate = options.sample_rate,
-                           .num_channels = 2,
-                           .interleaved_samples = output.Items(),
-                       },
-                       arena))
-        return ErrorCode {StandaloneError::RenderFileError};
+    auto const stats = WriteFlacFile(options.out_flac_path,
+                                     {
+                                         .sample_rate = options.sample_rate,
+                                         .num_channels = 2,
+                                         .interleaved_samples = output.Items(),
+                                         .gain = Pow(10.0f, options.gain_db / 20.0f),
+                                     },
+                                     arena);
+    if (!stats) return ErrorCode {StandaloneError::RenderFileError};
 
     LogInfo(ModuleName::Standalone,
-            "Rendered {.2} seconds of audio in {.2} seconds",
+            "Rendered {.2} seconds of audio in {.2} seconds, peak {.2} dBFS",
             (f64)output.size / 2 / options.sample_rate,
-            TimePoint::Now() - render_start);
+            TimePoint::Now() - render_start,
+            AmpToDb(stats->peak));
+
+    if (stats->num_clipped_samples)
+        StdPrintF(StdStream::Err,
+                  "Warning: {} samples clipped, peak {.2} dBFS; lower --render-gain by at least {.2} dB\n",
+                  stats->num_clipped_samples,
+                  AmpToDb(stats->peak),
+                  AmpToDb(stats->peak));
 
     return k_success;
 }
@@ -1463,6 +1473,7 @@ static int Main(ArgsCstr args) {
         Render,
         Events,
         SampleRate,
+        RenderGain,
         Tail,
         Tempo,
         Count,
@@ -1582,6 +1593,15 @@ static int Main(ArgsCstr args) {
             .num_values = 1,
         },
         {
+            .id = (u32)CommandLineArgId::RenderGain,
+            .key = "render-gain",
+            .description =
+                "Gain applied to --render output before it's written, so hot sounds don't clip, e.g. '--render-gain=-12'. Use '=' for negative values. Default 0.",
+            .value_type = "dB",
+            .required = false,
+            .num_values = 1,
+        },
+        {
             .id = (u32)CommandLineArgId::Tail,
             .key = "tail",
             .description =
@@ -1638,6 +1658,7 @@ static int Main(ArgsCstr args) {
         auto const out_path = cli_args[ToInt(CommandLineArgId::Render)].Value();
         auto const events_path = cli_args[ToInt(CommandLineArgId::Events)].Value();
         auto const sample_rate_str = cli_args[ToInt(CommandLineArgId::SampleRate)].Value();
+        auto const gain_str = cli_args[ToInt(CommandLineArgId::RenderGain)].Value();
         if (out_path) {
             if (!events_path) {
                 StdPrintF(StdStream::Err, "Error: --render requires --events\n");
@@ -1652,7 +1673,18 @@ static int Main(ArgsCstr args) {
                 .out_flac_path = *out_path,
                 .events_path = *events_path,
                 .sample_rate = 48000,
+                .gain_db = 0,
             };
+            if (gain_str) {
+                auto const gain_db = ParseRenderGainDb(*gain_str);
+                if (!gain_db) {
+                    StdPrintF(StdStream::Err,
+                              "Error: invalid --render-gain '{}': must be in [-60, 24] dB\n",
+                              *gain_str);
+                    return 1;
+                }
+                result->gain_db = *gain_db;
+            }
             if (sample_rate_str) {
                 auto const sample_rate = ParseWholeFloat(*sample_rate_str);
                 if (!sample_rate || !(*sample_rate >= 8000 && *sample_rate <= 384000)) {
@@ -1663,8 +1695,8 @@ static int Main(ArgsCstr args) {
                 }
                 result->sample_rate = *sample_rate;
             }
-        } else if (events_path || sample_rate_str) {
-            StdPrintF(StdStream::Err, "Error: --events and --sample-rate require --render\n");
+        } else if (events_path || sample_rate_str || gain_str) {
+            StdPrintF(StdStream::Err, "Error: --events, --sample-rate and --render-gain require --render\n");
             return 1;
         }
         result;

@@ -45,11 +45,24 @@ CheckUntilSilent(u64 tail_start_frame, u64 audible_end_frame, u64 current_frame,
 
 constexpr f64 k_until_silent_timeout_seconds = 60;
 
+// A number of decibels, optionally followed by "dB", e.g. "-12" or "-12dB".
+Optional<f32> ParseRenderGainDb(String str);
+
+struct Int24ConversionStats {
+    f32 peak; // After gain, before clamping.
+    u64 num_clipped_samples;
+};
+
+// Applies gain then clamps to full scale.
+Int24ConversionStats ConvertToInt24(Span<f32 const> samples, f32 gain, Span<s32> out);
+
 struct WriteFlacFileArgs {
     f64 sample_rate;
     u32 num_channels;
     Span<f32 const> interleaved_samples;
+    f32 gain;
 };
 
-// 24-bit. Returns false on failure.
-bool WriteFlacFile(String path, WriteFlacFileArgs args, ArenaAllocator& scratch_arena);
+// 24-bit. Returns k_nullopt on failure.
+Optional<Int24ConversionStats>
+WriteFlacFile(String path, WriteFlacFileArgs args, ArenaAllocator& scratch_arena);

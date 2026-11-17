@@ -124,13 +124,37 @@ CheckUntilSilent(u64 tail_start_frame, u64 audible_end_frame, u64 current_frame,
     return UntilSilentStatus::Continue;
 }
 
-bool WriteFlacFile(String path, WriteFlacFileArgs args, ArenaAllocator& scratch_arena) {
+Optional<f32> ParseRenderGainDb(String str) {
+    str = WhitespaceStripped(str);
+    if (EndsWithCaseInsensitiveAscii(str, "db"_s)) str = WhitespaceStripped(str.SubSpan(0, str.size - 2));
+    auto const value = ParseWholeFloat(str);
+    if (!value || !(*value >= -60 && *value <= 24)) return k_nullopt;
+    return (f32)*value;
+}
+
+Int24ConversionStats ConvertToInt24(Span<f32 const> samples, f32 gain, Span<s32> out) {
+    ASSERT_EQ(samples.size, out.size);
+    constexpr f32 k_max_24_bit = 8388607.0f;
+    Int24ConversionStats stats {};
+    for (auto const sample_index : Range(samples.size)) {
+        auto const scaled = samples[sample_index] * gain;
+        auto const magnitude = Abs(scaled);
+        stats.peak = Max(stats.peak, magnitude);
+        if (magnitude > 1.0f) ++stats.num_clipped_samples;
+        out[sample_index] = (s32)Round(Clamp(scaled, -1.0f, 1.0f) * k_max_24_bit);
+    }
+    return stats;
+}
+
+Optional<Int24ConversionStats>
+WriteFlacFile(String path, WriteFlacFileArgs args, ArenaAllocator& scratch_arena) {
     ASSERT(args.num_channels);
     ASSERT(args.sample_rate > 0);
     ASSERT(args.interleaved_samples.size % args.num_channels == 0);
+    ASSERT(args.gain > 0);
 
     auto* encoder = FLAC__stream_encoder_new();
-    if (!encoder) return false;
+    if (!encoder) return k_nullopt;
     DEFER { FLAC__stream_encoder_delete(encoder); };
 
     auto const num_frames = args.interleaved_samples.size / args.num_channels;
@@ -142,25 +166,28 @@ bool WriteFlacFile(String path, WriteFlacFileArgs args, ArenaAllocator& scratch_
 
     if (FLAC__stream_encoder_init_file(encoder, NullTerminated(path, scratch_arena), nullptr, nullptr) !=
         FLAC__STREAM_ENCODER_INIT_STATUS_OK)
-        return false;
+        return k_nullopt;
 
+    static_assert(sizeof(FLAC__int32) == sizeof(s32));
     constexpr usize k_chunk_frames = 4096;
-    constexpr f32 k_max_24_bit = 8388607.0f;
-    auto const chunk =
-        scratch_arena.AllocateExactSizeUninitialised<FLAC__int32>(k_chunk_frames * args.num_channels);
+    auto const chunk = scratch_arena.AllocateExactSizeUninitialised<s32>(k_chunk_frames * args.num_channels);
+    Int24ConversionStats stats {};
     bool success = true;
     for (usize frame_pos = 0; frame_pos < num_frames && success; frame_pos += k_chunk_frames) {
         auto const chunk_frames = Min(k_chunk_frames, num_frames - frame_pos);
         auto const samples =
             args.interleaved_samples.SubSpan(frame_pos * args.num_channels, chunk_frames * args.num_channels);
-        for (auto const sample_index : Range(samples.size))
-            chunk[sample_index] =
-                (FLAC__int32)Round(Clamp(samples[sample_index], -1.0f, 1.0f) * k_max_24_bit);
-        success = FLAC__stream_encoder_process_interleaved(encoder, chunk.data, (u32)chunk_frames);
+        auto const chunk_stats = ConvertToInt24(samples, args.gain, chunk.SubSpan(0, samples.size));
+        stats.peak = Max(stats.peak, chunk_stats.peak);
+        stats.num_clipped_samples += chunk_stats.num_clipped_samples;
+        success = FLAC__stream_encoder_process_interleaved(encoder,
+                                                           (FLAC__int32 const*)chunk.data,
+                                                           (u32)chunk_frames);
     }
 
     // Finishing writes the final metadata, so it has to happen even after a failure.
-    return FLAC__stream_encoder_finish(encoder) && success;
+    if (!FLAC__stream_encoder_finish(encoder) || !success) return k_nullopt;
+    return stats;
 }
 
 TEST_CASE(TestParseOfflineRenderEvents) {
@@ -253,8 +280,51 @@ TEST_CASE(TestCheckUntilSilent) {
     return k_success;
 }
 
+TEST_CASE(TestParseRenderGainDb) {
+    CHECK_EQ(ParseRenderGainDb("-12"), -12.0f);
+    CHECK_EQ(ParseRenderGainDb("-12dB"), -12.0f);
+    CHECK_EQ(ParseRenderGainDb(" 6.5 db"), 6.5f);
+    CHECK_EQ(ParseRenderGainDb("0"), 0.0f);
+    CHECK(!ParseRenderGainDb(""));
+    CHECK(!ParseRenderGainDb("db"));
+    CHECK(!ParseRenderGainDb("-61"));
+    CHECK(!ParseRenderGainDb("25"));
+    CHECK(!ParseRenderGainDb("nan"));
+    return k_success;
+}
+
+TEST_CASE(TestConvertToInt24) {
+    f32 const samples[] = {0.0f, 0.5f, -0.5f, 1.0f, -1.0f, 1.5f, -2.0f};
+    s32 out[ArraySize(samples)];
+
+    SUBCASE("unity gain clamps overs and counts them") {
+        auto const stats = ConvertToInt24(samples, 1.0f, out);
+        CHECK_EQ(stats.peak, 2.0f);
+        CHECK_EQ(stats.num_clipped_samples, 2u);
+        CHECK_EQ(out[0], 0);
+        CHECK_EQ(out[1], 4194304);
+        CHECK_EQ(out[2], -4194304);
+        CHECK_EQ(out[3], 8388607);
+        CHECK_EQ(out[4], -8388607);
+        CHECK_EQ(out[5], 8388607);
+        CHECK_EQ(out[6], -8388607);
+    }
+
+    SUBCASE("gain is applied before clamping") {
+        auto const stats = ConvertToInt24(samples, 0.25f, out);
+        CHECK_EQ(stats.peak, 0.5f);
+        CHECK_EQ(stats.num_clipped_samples, 0u);
+        CHECK_EQ(out[5], 3145728);
+        CHECK_EQ(out[6], -4194304);
+    }
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterOfflineRenderTests) {
     REGISTER_TEST(TestParseOfflineRenderEvents);
     REGISTER_TEST(TestParseRenderTail);
     REGISTER_TEST(TestCheckUntilSilent);
+    REGISTER_TEST(TestParseRenderGainDb);
+    REGISTER_TEST(TestConvertToInt24);
 }
