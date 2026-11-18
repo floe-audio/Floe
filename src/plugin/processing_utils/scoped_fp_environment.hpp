@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "foundation/foundation.hpp"
+
 // Flushes denormals, and optionally masks floating-point exceptions, for the object's lifetime, then restores
 // the host's environment.
 

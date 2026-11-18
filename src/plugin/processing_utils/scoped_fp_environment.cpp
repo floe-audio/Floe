@@ -3,10 +3,15 @@
 
 #include "scoped_fp_environment.hpp"
 
+#include <valgrind/valgrind.h>
+
 #include "tests/framework.hpp"
 
 TEST_CASE(TestScopedFloatingPointEnvironment) {
 #ifndef __ARM_ARCH
+    // Valgrind doesn't support unmasked SSE exceptions: the mask bits always read back as masked.
+    if (RUNNING_ON_VALGRIND) return k_success;
+
     auto const original_mxcsr = _mm_getcsr();
     DEFER { _mm_setcsr(original_mxcsr); };
 
