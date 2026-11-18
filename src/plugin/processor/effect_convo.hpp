@@ -166,12 +166,13 @@ class ConvolutionReverb final : public Effect {
 
         ASSERT(num_frames);
 
+        auto const samples =
+            PageAllocator::Instance().AllocateExactSizeUninitialised<f32>(audio_data.NumSamples());
+        DEFER { PageAllocator::Instance().Free(samples.ToByteSpan()); };
+        CopySamplesAsFloat(audio_data, samples);
+
         auto result = CreateStereoConvolver();
-        Init(*result,
-             audio_data.interleaved_samples.data,
-             audio_props.gain_db,
-             (int)num_frames,
-             (int)num_channels);
+        Init(*result, samples.data, audio_props.gain_db, (int)num_frames, (int)num_channels);
 
         return result;
     }

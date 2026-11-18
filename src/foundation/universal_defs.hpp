@@ -73,9 +73,15 @@ using s4 = signed _BitInt(4);
 using f32x2 = __attribute__((ext_vector_type(2))) f32;
 using f32x3 = __attribute__((ext_vector_type(3))) f32;
 using f32x4 = __attribute__((ext_vector_type(4))) f32;
+using u32x2 = __attribute__((ext_vector_type(2))) u32;
+using u64x2 = __attribute__((ext_vector_type(2))) u64;
 using u32x4 = __attribute__((ext_vector_type(4))) u32;
 using s32x2 = __attribute__((ext_vector_type(2))) s32;
+using s32x4 = __attribute__((ext_vector_type(4))) s32;
+using s16x2 = __attribute__((ext_vector_type(2))) s16;
+using s16x4 = __attribute__((ext_vector_type(4))) s16;
 using u8x4 = __attribute__((ext_vector_type(4))) u8;
+using u8x16 = __attribute__((ext_vector_type(16))) u8;
 using b8x2 = __attribute__((ext_vector_type(2))) u8;
 
 // ==========================================================================================================

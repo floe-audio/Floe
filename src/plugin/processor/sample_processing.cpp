@@ -15,6 +15,30 @@ struct IntRange {
 
 inline int Overlap(IntRange a, IntRange b) { return Max(0, Min(a.hi, b.hi) - Max(a.lo, b.lo) + 1); }
 
+ALWAYS_INLINE static f32 UnscaledPeak(AudioData const& audio_data, AudioSampleFormat format) {
+    auto const bytes_per_sample = BytesPerSample(format);
+    f32 peak = 0;
+    for (auto const sample_index : Range(audio_data.NumSamples()))
+        peak = Max(
+            peak,
+            Abs(LoadUnscaledSample(audio_data.interleaved_samples.data + (sample_index * bytes_per_sample),
+                                   format)));
+    return peak;
+}
+
+static f32 PeakAmplitude(AudioData const& audio_data) {
+    // The format is passed as a constant so that each case gets its own specialised loop.
+    switch (audio_data.format) {
+        case AudioSampleFormat::Int16:
+            return UnscaledPeak(audio_data, AudioSampleFormat::Int16) * SampleScale(AudioSampleFormat::Int16);
+        case AudioSampleFormat::Int24:
+            return UnscaledPeak(audio_data, AudioSampleFormat::Int24) * SampleScale(AudioSampleFormat::Int24);
+        case AudioSampleFormat::Float32: return UnscaledPeak(audio_data, AudioSampleFormat::Float32);
+        case AudioSampleFormat::Count: break;
+    }
+    PanicIfReached();
+}
+
 Span<u8> CreateWaveformImage(WaveformAudioSource source,
                              UiSize size,
                              Allocator& a,
@@ -22,9 +46,7 @@ Span<u8> CreateWaveformImage(WaveformAudioSource source,
     f32x2 normalise_scale = 1.0f;
     if (source.tag == WaveformAudioSourceType::AudioData) {
         auto const& audio_data = *source.Get<AudioData const*>();
-        f32 max_amp = 0;
-        for (auto const& sample : audio_data.interleaved_samples)
-            max_amp = Max(max_amp, Abs(sample));
+        auto const max_amp = PeakAmplitude(audio_data);
         if (max_amp > 0) normalise_scale = 1.0f / max_amp;
     }
 
@@ -72,9 +94,11 @@ Span<u8> CreateWaveformImage(WaveformAudioSource source,
                     for (int i = first_sample_x; i <= end_sample_x; i += step) {
                         auto const& audio_data = *source.Get<AudioData const*>();
                         auto const frame_ptr =
-                            audio_data.interleaved_samples.data + (i * audio_data.channels);
-                        auto const audio = audio_data.channels == 2 ? LoadUnalignedToType<f32x2>(frame_ptr)
-                                                                    : f32x2(frame_ptr[0]);
+                            audio_data.interleaved_samples.data +
+                            ((usize)i * audio_data.channels * BytesPerSample(audio_data.format));
+                        auto const audio =
+                            LoadUnscaledFrame(frame_ptr, audio_data.channels, audio_data.format) *
+                            SampleScale(audio_data.format);
                         levels += Abs(audio);
 
                         num_sampled++;
@@ -180,7 +204,8 @@ TEST_CASE(TestSamplePlayhead) {
         .channels = 1,
         .sample_rate = 44100,
         .num_frames = data.size,
-        .interleaved_samples = data,
+        .format = AudioSampleFormat::Float32,
+        .interleaved_samples = Span<f32 const> {data}.ToConstByteSpan(),
     };
 
     PlayHead playhead {};
@@ -367,7 +392,8 @@ TEST_CASE(TestStandardLoopSmoothness) {
         .channels = 1,
         .sample_rate = 44100,
         .num_frames = k_num_frames,
-        .interleaved_samples = data,
+        .format = AudioSampleFormat::Float32,
+        .interleaved_samples = Span<f32 const> {data}.ToConstByteSpan(),
     };
 
     BoundsCheckedLoop const loop {
@@ -546,7 +572,8 @@ TEST_CASE(TestContiguousFrames) {
         .channels = 2,
         .sample_rate = 44100,
         .num_frames = data.size / 2,
-        .interleaved_samples = data,
+        .format = AudioSampleFormat::Float32,
+        .interleaved_samples = Span<f32 const> {data}.ToConstByteSpan(),
     };
 
     for (auto const _ : Range(2000)) {
@@ -596,7 +623,8 @@ TEST_CASE(TestFetchSampleFrames) {
             .channels = channels,
             .sample_rate = 44100,
             .num_frames = (u32)data.size / channels,
-            .interleaved_samples = data,
+            .format = AudioSampleFormat::Float32,
+            .interleaved_samples = Span<f32 const> {data}.ToConstByteSpan(),
         };
         CAPTURE(channels);
 
@@ -660,10 +688,107 @@ TEST_CASE(TestFetchSampleFrames) {
     return k_success;
 }
 
+// Quantises to the format's range. Used to build audio data for tests and benchmarks.
+static void WriteSampleInFormat(u8* destination, f32 value, AudioSampleFormat format) {
+    switch (format) {
+        case AudioSampleFormat::Int16: {
+            auto const quantised = (s16)(value * 32767.0f);
+            __builtin_memcpy_inline(destination, &quantised, sizeof(quantised));
+            break;
+        }
+        case AudioSampleFormat::Int24: {
+            auto const quantised = (s32)(value * 8388607.0f);
+            destination[0] = (u8)quantised;
+            destination[1] = (u8)(quantised >> 8);
+            destination[2] = (u8)(quantised >> 16);
+            break;
+        }
+        case AudioSampleFormat::Float32: __builtin_memcpy_inline(destination, &value, sizeof(value)); break;
+        case AudioSampleFormat::Count: PanicIfReached();
+    }
+}
+
+// Integer formats must give exactly the output that the same values stored as floats give.
+TEST_CASE(TestIntegerFormatsMatchFloat) {
+    constexpr usize k_num_samples = 128;
+    u64 seed = SourceLocationHash();
+
+    for (auto const format : Array {AudioSampleFormat::Int16, AudioSampleFormat::Int24}) {
+        CAPTURE((u32)format);
+
+        auto const storage = tester.scratch_arena.AllocateExactSizeUninitialised<u8>(
+            (k_num_samples * BytesPerSample(format)) + k_audio_data_padding_bytes);
+        for (auto const sample_index : Range(k_num_samples)) {
+            // Includes the extremes of the format's range.
+            auto const value = sample_index == 0   ? -1.0f
+                               : sample_index == 1 ? 1.0f
+                                                   : RandomFloatInRange<f32>(seed, -1, 1);
+            WriteSampleInFormat(storage.data + (sample_index * BytesPerSample(format)), value, format);
+        }
+        // Whatever follows the final sample must not affect it.
+        FillMemory(storage.SubSpan(k_num_samples * BytesPerSample(format)), 0xff);
+
+        for (auto const iteration : Range(4000)) {
+            u8 const channels = (iteration % 2) ? 2 : 1;
+            CAPTURE(channels);
+
+            AudioData const audio {
+                .hash = SourceLocationHash(),
+                .channels = channels,
+                .sample_rate = 44100,
+                .num_frames = (u32)k_num_samples / channels,
+                .format = format,
+                .interleaved_samples = storage,
+            };
+
+            Array<f32, k_num_samples> float_data;
+            CopySamplesAsFloat(audio, float_data);
+            auto float_audio = audio;
+            float_audio.format = AudioSampleFormat::Float32;
+            float_audio.interleaved_samples = Span<f32 const> {float_data}.ToConstByteSpan();
+
+            auto playhead = RandomTestPlayhead(seed, audio.num_frames);
+            auto float_playhead = playhead;
+
+            constexpr u32 k_num_frames = 40;
+            f64 increments[k_num_frames];
+            f64 max_increment = 0;
+            for (auto& inc : increments) {
+                inc = RandomFloatInRange<f64>(seed, 0, 4);
+                max_increment = Max(max_increment, inc);
+            }
+            SampleFetchOptions const options {
+                .increments = increments,
+                .max_increment = max_increment,
+                .increment_scale = RandomFloatInRange<f64>(seed, 0.5, 1.5),
+                .end_frame = RandomIntInRange<u32>(seed, 1, audio.num_frames),
+            };
+
+            f32x2 out[k_num_frames];
+            f32x2 float_out[k_num_frames];
+            auto const count = FetchSampleFrames(audio, playhead, out, options, [](u32, PlayHead const&) {});
+            auto const float_count =
+                FetchSampleFrames(float_audio, float_playhead, float_out, options, [](u32, PlayHead const&) {
+                });
+
+            REQUIRE_EQ(count, float_count);
+            for (auto const frame_index : Range(count)) {
+                CAPTURE(frame_index);
+                CHECK_EQ(out[frame_index][0], float_out[frame_index][0]);
+                CHECK_EQ(out[frame_index][1], float_out[frame_index][1]);
+            }
+            REQUIRE_EQ(playhead.frame_pos, float_playhead.frame_pos);
+        }
+    }
+
+    return k_success;
+}
+
 TEST_REGISTRATION(RegisterSamplePlayheadTests) {
     REGISTER_TEST(TestSamplePlayhead);
     REGISTER_TEST(TestContiguousFrames);
     REGISTER_TEST(TestFetchSampleFrames);
+    REGISTER_TEST(TestIntegerFormatsMatchFloat);
     REGISTER_TEST(TestInterpolation);
     REGISTER_TEST(TestStandardLoopSmoothness);
     REGISTER_TEST(TestPlayheadSetupCases);
@@ -672,150 +797,117 @@ TEST_REGISTRATION(RegisterSamplePlayheadTests) {
 // ======================================================================================
 // Benchmarks
 
-BENCHMARK_FN void BenchmarkGetSampleFrameMono() {
-    constexpr u32 k_num_frames = 44100; // 1 second at 44.1kHz
-    alignas(16) f32 data[k_num_frames];
-    for (u32 i = 0; i < k_num_frames; ++i)
-        data[i] = Sin(k_two_pi<f32> * (f32)i / (f32)k_num_frames);
-
-    AudioData const audio {
+// A sine in the given format. Free interleaved_samples with the PageAllocator.
+[[maybe_unused]] static AudioData
+AllocateBenchmarkAudio(u32 num_frames, u8 channels, AudioSampleFormat format) {
+    auto const num_samples = (usize)num_frames * channels;
+    auto const storage = PageAllocator::Instance().AllocateExactSizeUninitialised<u8>(
+        (num_samples * BytesPerSample(format)) + k_audio_data_padding_bytes);
+    for (auto const sample_index : Range(num_samples))
+        WriteSampleInFormat(storage.data + (sample_index * BytesPerSample(format)),
+                            Sin(k_two_pi<f32> * (f32)(sample_index / channels) / 400.0f) * 0.8f,
+                            format);
+    return {
         .hash = 0,
-        .channels = 1,
+        .channels = channels,
         .sample_rate = 44100,
-        .num_frames = k_num_frames,
-        .interleaved_samples = {data, k_num_frames},
+        .num_frames = num_frames,
+        .format = format,
+        .interleaved_samples = storage,
     };
+}
 
-    constexpr int k_num_iterations = 750;
-    constexpr f64 k_increment = 1.0;
+struct GetSampleFrameBenchmarkOptions {
+    u8 channels;
+    AudioSampleFormat format;
+    f64 increment = 1.0;
+    Optional<BoundsCheckedLoop> loop = k_nullopt;
+};
 
-    for (int iter = 0; iter < k_num_iterations; ++iter) {
+// The general path: one frame at a time, with loop and end-of-data handling.
+BENCHMARK_FN void BenchmarkGetSampleFrame(GetSampleFrameBenchmarkOptions options) {
+    constexpr u32 k_num_frames = 44100;
+    auto const audio = AllocateBenchmarkAudio(k_num_frames, options.channels, options.format);
+    DEFER { PageAllocator::Instance().Free(audio.interleaved_samples.ToByteSpan()); };
+
+    for (auto const _ : Range(750)) {
         PlayHead playhead {};
-        ResetPlayhead(playhead, 0.0, k_nullopt, false, audio.num_frames);
+        ResetPlayhead(playhead, 0.0, options.loop, false, audio.num_frames);
 
         f32x2 sum = 0;
-        while (!PlaybackEnded(playhead, audio.num_frames)) {
+        for (u32 frame_index = 0; frame_index < k_num_frames && !PlaybackEnded(playhead, audio.num_frames);
+             ++frame_index) {
             auto frame = GetSampleFrame(audio, playhead);
             benchmarks::DoNotOptimise(frame);
             sum += frame;
-            IncrementPlaybackPos(playhead, k_increment, audio.num_frames);
+            IncrementPlaybackPos(playhead, options.increment, audio.num_frames);
         }
         benchmarks::DoNotOptimise(sum);
     }
 }
 
-BENCHMARK_FN void BenchmarkGetSampleFrameStereo() {
-    constexpr u32 k_num_frames = 44100;
-    alignas(16) f32 data[k_num_frames * 2];
-    for (u32 i = 0; i < k_num_frames; ++i) {
-        data[i * 2] = Sin((k_two_pi<f32> * (f32)i) / (f32)k_num_frames);
-        data[(i * 2) + 1] = Sin(((k_two_pi<f32> * (f32)i) / (f32)k_num_frames) + 0.5f);
-    }
+// The voice fast path, over data too large for the CPU cache so that memory bandwidth is part of the cost.
+BENCHMARK_FN void BenchmarkFetchSampleFrames(u8 channels, AudioSampleFormat format) {
+    auto const audio = AllocateBenchmarkAudio(44100 * 10, channels, format);
+    DEFER { PageAllocator::Instance().Free(audio.interleaved_samples.ToByteSpan()); };
 
-    AudioData const audio {
-        .hash = 0,
-        .channels = 2,
-        .sample_rate = 44100,
-        .num_frames = k_num_frames,
-        .interleaved_samples = {data, k_num_frames * 2},
+    constexpr u32 k_block_size = 512;
+    f64 increments[k_block_size];
+    for (auto const frame_index : Range(k_block_size))
+        increments[frame_index] = 1.2 + (0.2 * (f64)(frame_index % 7) / 7.0);
+    SampleFetchOptions const options {
+        .increments = increments,
+        .max_increment = 1.4,
+        .end_frame = audio.num_frames,
     };
 
-    constexpr int k_num_iterations = 750;
-    constexpr f64 k_increment = 1.0;
-
-    for (int iter = 0; iter < k_num_iterations; ++iter) {
+    for (auto const _ : Range(2000)) {
         PlayHead playhead {};
         ResetPlayhead(playhead, 0.0, k_nullopt, false, audio.num_frames);
 
-        f32x2 sum = 0;
-        while (!PlaybackEnded(playhead, audio.num_frames)) {
-            auto frame = GetSampleFrame(audio, playhead);
-            benchmarks::DoNotOptimise(frame);
-            sum += frame;
-            IncrementPlaybackPos(playhead, k_increment, audio.num_frames);
+        f32x2 out[k_block_size];
+        while (true) {
+            auto const count = FetchSampleFrames(audio, playhead, out, options, [](u32, PlayHead const&) {});
+            benchmarks::DoNotOptimise(out);
+            if (count != k_block_size) break;
         }
-        benchmarks::DoNotOptimise(sum);
-    }
-}
-
-BENCHMARK_FN void BenchmarkGetSampleFrameMonoLooped() {
-    constexpr u32 k_num_frames = 44100;
-    alignas(16) f32 data[k_num_frames];
-    for (u32 i = 0; i < k_num_frames; ++i)
-        data[i] = Sin(k_two_pi<f32> * (f32)i / (f32)k_num_frames);
-
-    AudioData const audio {
-        .hash = 0,
-        .channels = 1,
-        .sample_rate = 44100,
-        .num_frames = k_num_frames,
-        .interleaved_samples = {data, k_num_frames},
-    };
-
-    BoundsCheckedLoop const loop {
-        .start = 1000,
-        .end = 40000,
-        .crossfade = 500,
-        .mode = sample_lib::LoopMode::Standard,
-    };
-
-    constexpr int k_num_iterations = 750;
-    constexpr f64 k_increment = 1.0;
-    constexpr u32 k_frames_per_iter = 44100;
-
-    for (int iter = 0; iter < k_num_iterations; ++iter) {
-        PlayHead playhead {};
-        ResetPlayhead(playhead, 0.0, loop, false, audio.num_frames);
-
-        f32x2 sum = 0;
-        for (u32 f = 0; f < k_frames_per_iter; ++f) {
-            auto frame = GetSampleFrame(audio, playhead);
-            benchmarks::DoNotOptimise(frame);
-            sum += frame;
-            IncrementPlaybackPos(playhead, k_increment, audio.num_frames);
-        }
-        benchmarks::DoNotOptimise(sum);
-    }
-}
-
-BENCHMARK_FN void BenchmarkGetSampleFrameFractionalIncrement() {
-    constexpr u32 k_num_frames = 44100;
-    alignas(16) f32 data[k_num_frames * 2];
-    for (u32 i = 0; i < k_num_frames; ++i) {
-        data[i * 2] = Sin((k_two_pi<f32> * (f32)i) / (f32)k_num_frames);
-        data[(i * 2) + 1] = Sin(((k_two_pi<f32> * (f32)i) / (f32)k_num_frames) + 0.5f);
-    }
-
-    AudioData const audio {
-        .hash = 0,
-        .channels = 2,
-        .sample_rate = 44100,
-        .num_frames = k_num_frames,
-        .interleaved_samples = {data, k_num_frames * 2},
-    };
-
-    // Simulate pitch-shifted playback (e.g. 1.5x speed).
-    constexpr int k_num_iterations = 750;
-    constexpr f64 k_increment = 1.5;
-
-    for (int iter = 0; iter < k_num_iterations; ++iter) {
-        PlayHead playhead {};
-        ResetPlayhead(playhead, 0.0, k_nullopt, false, audio.num_frames);
-
-        f32x2 sum = 0;
-        while (!PlaybackEnded(playhead, audio.num_frames)) {
-            auto frame = GetSampleFrame(audio, playhead);
-            benchmarks::DoNotOptimise(frame);
-            sum += frame;
-            IncrementPlaybackPos(playhead, k_increment, audio.num_frames);
-        }
-        benchmarks::DoNotOptimise(sum);
     }
 }
 
 BENCHMARK_REGISTRATION(RegisterSampleProcessingBenchmarks) {
-    REGISTER_BENCHMARK(BenchmarkGetSampleFrameMono);
-    REGISTER_BENCHMARK(BenchmarkGetSampleFrameStereo);
-    REGISTER_BENCHMARK(BenchmarkGetSampleFrameMonoLooped);
-    REGISTER_BENCHMARK(BenchmarkGetSampleFrameFractionalIncrement);
+#define REGISTER_FORMAT_BENCHMARKS(format_name)                                                              \
+    REGISTER_BENCHMARK_NAMED([]() { BenchmarkFetchSampleFrames(1, AudioSampleFormat::format_name); },        \
+                             "FetchSampleFrames/Mono/" #format_name);                                        \
+    REGISTER_BENCHMARK_NAMED([]() { BenchmarkFetchSampleFrames(2, AudioSampleFormat::format_name); },        \
+                             "FetchSampleFrames/Stereo/" #format_name);                                      \
+    REGISTER_BENCHMARK_NAMED(                                                                                \
+        []() { BenchmarkGetSampleFrame({.channels = 1, .format = AudioSampleFormat::format_name}); },        \
+        "GetSampleFrame/Mono/" #format_name);                                                                \
+    REGISTER_BENCHMARK_NAMED(                                                                                \
+        []() { BenchmarkGetSampleFrame({.channels = 2, .format = AudioSampleFormat::format_name}); },        \
+        "GetSampleFrame/Stereo/" #format_name);                                                              \
+    REGISTER_BENCHMARK_NAMED(                                                                                \
+        []() {                                                                                               \
+            BenchmarkGetSampleFrame({                                                                        \
+                .channels = 1,                                                                               \
+                .format = AudioSampleFormat::format_name,                                                    \
+                .loop = BoundsCheckedLoop {.start = 1000,                                                    \
+                                           .end = 40000,                                                     \
+                                           .crossfade = 500,                                                 \
+                                           .mode = sample_lib::LoopMode::Standard},                          \
+            });                                                                                              \
+        },                                                                                                   \
+        "GetSampleFrame/MonoLooped/" #format_name);                                                          \
+    REGISTER_BENCHMARK_NAMED(                                                                                \
+        []() {                                                                                               \
+            BenchmarkGetSampleFrame(                                                                         \
+                {.channels = 2, .format = AudioSampleFormat::format_name, .increment = 1.5});                \
+        },                                                                                                   \
+        "GetSampleFrame/StereoFractionalIncrement/" #format_name)
+
+    REGISTER_FORMAT_BENCHMARKS(Int16);
+    REGISTER_FORMAT_BENCHMARKS(Int24);
+    REGISTER_FORMAT_BENCHMARKS(Float32);
+
+#undef REGISTER_FORMAT_BENCHMARKS
 }

@@ -2095,7 +2095,8 @@ static AudioData CreateTestAudioData(Span<f32> buffer, u32 num_frames, u8 channe
         .channels = channels,
         .sample_rate = 44100,
         .num_frames = num_frames,
-        .interleaved_samples = {buffer.data, num_frames * channels},
+        .format = AudioSampleFormat::Float32,
+        .interleaved_samples = Span<f32 const> {buffer.data, num_frames * channels}.ToConstByteSpan(),
     };
 }
 

@@ -410,24 +410,31 @@ ALWAYS_INLINE inline InterpolationPoints<u32> ContiguousTapIndices(u32 frame_ind
 }
 
 ALWAYS_INLINE NO_UBSAN inline InterpolationPoints<f32x2>
-LoadInterpolationPoints(InterpolationPoints<f32 const*> const& p, u8 channels) {
-    ASSERT_HOT(channels > 0);
-    ASSERT_HOT(channels <= 2);
-    InterpolationPoints<f32x2> result;
-    if (channels == 1) {
-        result = {
-            .xm1 = {p.xm1[0], p.xm1[0]},
-            .x0 = {p.x0[0], p.x0[0]},
-            .x1 = {p.x1[0], p.x1[0]},
-            .x2 = {p.x2[0], p.x2[0]},
-        };
-    } else {
-        __builtin_memcpy_inline(&result.xm1, p.xm1, sizeof(f32x2));
-        __builtin_memcpy_inline(&result.x0, p.x0, sizeof(f32x2));
-        __builtin_memcpy_inline(&result.x1, p.x1, sizeof(f32x2));
-        __builtin_memcpy_inline(&result.x2, p.x2, sizeof(f32x2));
-    }
-    return result;
+LoadUnscaledInterpolationPoints(InterpolationPoints<u8 const*> const& p,
+                                u8 channels,
+                                AudioSampleFormat format) {
+    return {
+        .xm1 = LoadUnscaledFrame(p.xm1, channels, format),
+        .x0 = LoadUnscaledFrame(p.x0, channels, format),
+        .x1 = LoadUnscaledFrame(p.x1, channels, format),
+        .x2 = LoadUnscaledFrame(p.x2, channels, format),
+    };
+}
+
+ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateAtSampleIndices(AudioData const& s,
+                                                               InterpolationPoints<u32> sample_indices,
+                                                               f32 x,
+                                                               AudioSampleFormat format) {
+    ASSERT_HOT(format == s.format);
+    auto const data = s.interleaved_samples.data;
+    auto const bytes_per_sample = BytesPerSample(format);
+    InterpolationPoints<u8 const*> const p {
+        .xm1 = data + ((usize)sample_indices.xm1 * bytes_per_sample),
+        .x0 = data + ((usize)sample_indices.x0 * bytes_per_sample),
+        .x1 = data + ((usize)sample_indices.x1 * bytes_per_sample),
+        .x2 = data + ((usize)sample_indices.x2 * bytes_per_sample),
+    };
+    return DoHermiteInterp(LoadUnscaledInterpolationPoints(p, s.channels, format), x) * SampleScale(format);
 }
 
 // 4-point Hermite interpolation using the audio data at the given frame indices.
@@ -440,7 +447,7 @@ ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateAtFrameIndices(AudioData const& s
     ASSERT_HOT(s.channels <= 2);
     ASSERT_HOT(frame_indices.x0 < s.num_frames);
 
-    auto const data_vals = ({
+    auto const sample_indices = ({
         auto indices = frame_indices;
 
         // If we're reversed, invert the indices.
@@ -449,17 +456,20 @@ ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateAtFrameIndices(AudioData const& s
         // Convert from frame indices to sample indices (channels is 1 or 2 so we can use a bit shift for
         // speed).
         indices.vec <<= s.channels - 1;
-
-        InterpolationPoints<f32 const*> p {
-            .xm1 = s.interleaved_samples.data + indices.xm1,
-            .x0 = s.interleaved_samples.data + indices.x0,
-            .x1 = s.interleaved_samples.data + indices.x1,
-            .x2 = s.interleaved_samples.data + indices.x2,
-        };
-        p;
+        indices;
     });
 
-    return DoHermiteInterp(LoadInterpolationPoints(data_vals, s.channels), x);
+    // The format is passed as a constant so that each case gets its own specialised code.
+    switch (s.format) {
+        case AudioSampleFormat::Int16:
+            return InterpolateAtSampleIndices(s, sample_indices, x, AudioSampleFormat::Int16);
+        case AudioSampleFormat::Int24:
+            return InterpolateAtSampleIndices(s, sample_indices, x, AudioSampleFormat::Int24);
+        case AudioSampleFormat::Float32:
+            return InterpolateAtSampleIndices(s, sample_indices, x, AudioSampleFormat::Float32);
+        case AudioSampleFormat::Count: break;
+    }
+    PanicIfReached();
 }
 
 // 4-point interpolation at the playhead position. Doesn't apply the loop crossfade.
@@ -535,21 +545,24 @@ ALWAYS_INLINE inline u32 ContiguousFramesAvailable(PlayHead const& playhead,
 }
 
 // Addressing for frames that ContiguousFramesAvailable() has already validated: tap k of frame i is at
-// origin + (i + k) * tap_stride. Reversed lookup means frame 0 is the last frame of the data and the stride
-// is negative.
+// origin + (i + k) * tap_stride, in bytes. Reversed lookup means frame 0 is the last frame of the data and
+// the stride is negative.
 struct ContiguousTapLayout {
-    f32 const* origin;
+    u8 const* origin;
     s64 tap_stride;
     u8 channels;
+    AudioSampleFormat format;
 };
 
 ALWAYS_INLINE inline ContiguousTapLayout ContiguousTapLayoutFor(AudioData const& s,
                                                                 bool inverse_data_lookup) {
+    auto const bytes_per_frame = BytesPerSample(s.format) * s.channels;
     return {
-        .origin =
-            s.interleaved_samples.data + (inverse_data_lookup ? (usize)(s.num_frames - 1) * s.channels : 0),
-        .tap_stride = inverse_data_lookup ? -(s64)s.channels : (s64)s.channels,
+        .origin = s.interleaved_samples.data +
+                  (inverse_data_lookup ? (usize)(s.num_frames - 1) * bytes_per_frame : 0),
+        .tap_stride = inverse_data_lookup ? -(s64)bytes_per_frame : (s64)bytes_per_frame,
         .channels = s.channels,
+        .format = s.format,
     };
 }
 
@@ -557,15 +570,17 @@ ALWAYS_INLINE NO_UBSAN inline f32x2 InterpolateContiguousFrame(ContiguousTapLayo
     auto const frame_index = (u32)frame_pos;
     auto const x0 = layout.origin + ((s64)frame_index * layout.tap_stride);
 
-    return DoHermiteInterp(LoadInterpolationPoints(
+    return DoHermiteInterp(LoadUnscaledInterpolationPoints(
                                {
                                    .xm1 = x0 - layout.tap_stride,
                                    .x0 = x0,
                                    .x1 = x0 + layout.tap_stride,
                                    .x2 = x0 + (2 * layout.tap_stride),
                                },
-                               layout.channels),
-                           (f32)(frame_pos - frame_index));
+                               layout.channels,
+                               layout.format),
+                           (f32)(frame_pos - frame_index)) *
+           SampleScale(layout.format);
 }
 
 ALWAYS_INLINE NO_UBSAN inline f32x2
@@ -574,14 +589,6 @@ InterpolateContiguousFrame(AudioData const& s, f64 frame_pos, bool inverse_data_
     ASSERT_HOT(frame_index >= 1);
     ASSERT_HOT(frame_index + 2 < s.num_frames);
     return InterpolateContiguousFrame(ContiguousTapLayoutFor(s, inverse_data_lookup), frame_pos);
-}
-
-ALWAYS_INLINE NO_UBSAN inline f32x4 LoadStereoFramePair(f32 const* frame_0, f32 const* frame_1) {
-    f32x2 a;
-    f32x2 b;
-    __builtin_memcpy_inline(&a, frame_0, sizeof(f32x2));
-    __builtin_memcpy_inline(&b, frame_1, sizeof(f32x2));
-    return __builtin_shufflevector(a, b, 0, 1, 2, 3);
 }
 
 // Two stereo frames interpolated in one go, packed as {L0, R0, L1, R1}. Lane for lane it's the same
@@ -596,13 +603,14 @@ InterpolateContiguousStereoFramePair(ContiguousTapLayout layout, f64 frame_pos_0
     auto const x0_1 = layout.origin + ((s64)frame_index_1 * stride);
 
     InterpolationPoints<f32x4> const points {
-        .xm1 = LoadStereoFramePair(x0_0 - stride, x0_1 - stride),
-        .x0 = LoadStereoFramePair(x0_0, x0_1),
-        .x1 = LoadStereoFramePair(x0_0 + stride, x0_1 + stride),
-        .x2 = LoadStereoFramePair(x0_0 + (2 * stride), x0_1 + (2 * stride)),
+        .xm1 = LoadUnscaledStereoFramePair(x0_0 - stride, x0_1 - stride, layout.format),
+        .x0 = LoadUnscaledStereoFramePair(x0_0, x0_1, layout.format),
+        .x1 = LoadUnscaledStereoFramePair(x0_0 + stride, x0_1 + stride, layout.format),
+        .x2 = LoadUnscaledStereoFramePair(x0_0 + (2 * stride), x0_1 + (2 * stride), layout.format),
     };
     f32x2 const fractions {(f32)(frame_pos_0 - frame_index_0), (f32)(frame_pos_1 - frame_index_1)};
-    return DoHermiteInterp(points, __builtin_shufflevector(fractions, fractions, 0, 0, 1, 1));
+    return DoHermiteInterp(points, __builtin_shufflevector(fractions, fractions, 0, 0, 1, 1)) *
+           SampleScale(layout.format);
 }
 
 // Four mono frames interpolated in one go, packed as {F0, F1, F2, F3}. As above, identical output to the
@@ -624,16 +632,23 @@ ALWAYS_INLINE NO_UBSAN inline f32x4 InterpolateContiguousMonoFrameQuad(Contiguou
     auto const x0_3 = layout.origin + ((s64)frame_index_3 * stride);
 
     InterpolationPoints<f32x4> const points {
-        .xm1 = {x0_0[-stride], x0_1[-stride], x0_2[-stride], x0_3[-stride]},
-        .x0 = {x0_0[0], x0_1[0], x0_2[0], x0_3[0]},
-        .x1 = {x0_0[stride], x0_1[stride], x0_2[stride], x0_3[stride]},
-        .x2 = {x0_0[2 * stride], x0_1[2 * stride], x0_2[2 * stride], x0_3[2 * stride]},
+#define LOAD_TAP_QUAD(tap_offset)                                                                            \
+    LoadUnscaledSampleQuad(x0_0 + (tap_offset),                                                              \
+                           x0_1 + (tap_offset),                                                              \
+                           x0_2 + (tap_offset),                                                              \
+                           x0_3 + (tap_offset),                                                              \
+                           layout.format)
+        .xm1 = LOAD_TAP_QUAD(-stride),
+        .x0 = LOAD_TAP_QUAD(0),
+        .x1 = LOAD_TAP_QUAD(stride),
+        .x2 = LOAD_TAP_QUAD(2 * stride),
+#undef LOAD_TAP_QUAD
     };
     f32x4 const x {(f32)(frame_pos_0 - frame_index_0),
                    (f32)(frame_pos_1 - frame_index_1),
                    (f32)(frame_pos_2 - frame_index_2),
                    (f32)(frame_pos_3 - frame_index_3)};
-    return DoHermiteInterp(points, x);
+    return DoHermiteInterp(points, x) * SampleScale(layout.format);
 }
 
 ALWAYS_INLINE NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead const& playhead) {
@@ -697,6 +712,73 @@ ALWAYS_INLINE NO_UBSAN inline f32x2 GetSampleFrame(AudioData const& s, PlayHead 
     return result;
 }
 
+struct ContiguousFetchArgs {
+    ContiguousTapLayout layout;
+    f64 const* increments;
+    f64 increment_scale;
+    f32x2* out;
+    u32 count;
+};
+
+// Fetches frames that ContiguousFramesAvailable() has already validated. Returns the new frame position.
+ALWAYS_INLINE NO_UBSAN inline f64
+FetchContiguousFrames(ContiguousFetchArgs const& args, f64 frame_pos, AudioSampleFormat format) {
+    // The general path's multiply and add are separate statements, so they never contract. These
+    // accumulations are single expressions, which would fuse to an FMA on targets that have one and
+    // round differently, drifting the playhead depending on which path a block took.
+#pragma clang fp contract(off)
+
+    ASSERT_HOT(format == args.layout.format);
+    auto layout = args.layout;
+    layout.format = format;
+    auto const increments = args.increments;
+    auto const increment_scale = args.increment_scale;
+    auto const out = args.out;
+    auto const count = args.count;
+
+    u32 frame_index = 0;
+    switch (layout.channels) {
+        case 1: {
+            // Interpolate 4 frames at once.
+            for (; frame_index + 4 <= count; frame_index += 4) {
+                auto const frame_pos_0 = frame_pos;
+                auto const frame_pos_1 = frame_pos_0 + (increments[frame_index] * increment_scale);
+                auto const frame_pos_2 = frame_pos_1 + (increments[frame_index + 1] * increment_scale);
+                auto const frame_pos_3 = frame_pos_2 + (increments[frame_index + 2] * increment_scale);
+                frame_pos = frame_pos_3 + (increments[frame_index + 3] * increment_scale);
+                auto const frames = InterpolateContiguousMonoFrameQuad(layout,
+                                                                       frame_pos_0,
+                                                                       frame_pos_1,
+                                                                       frame_pos_2,
+                                                                       frame_pos_3);
+                f32x4 const frames_01 = __builtin_shufflevector(frames, frames, 0, 0, 1, 1);
+                f32x4 const frames_23 = __builtin_shufflevector(frames, frames, 2, 2, 3, 3);
+                __builtin_memcpy_inline(out + frame_index, &frames_01, sizeof(frames_01));
+                __builtin_memcpy_inline(out + frame_index + 2, &frames_23, sizeof(frames_23));
+            }
+            break;
+        }
+        case 2: {
+            // Interpolate 2 frames at once.
+            for (; frame_index + 2 <= count; frame_index += 2) {
+                auto const frame_pos_0 = frame_pos;
+                auto const frame_pos_1 = frame_pos_0 + (increments[frame_index] * increment_scale);
+                frame_pos = frame_pos_1 + (increments[frame_index + 1] * increment_scale);
+                auto const frames = InterpolateContiguousStereoFramePair(layout, frame_pos_0, frame_pos_1);
+                __builtin_memcpy_inline(out + frame_index, &frames, sizeof(frames));
+            }
+            break;
+        }
+        default: PanicIfReached();
+    }
+
+    for (; frame_index < count; ++frame_index) {
+        out[frame_index] = InterpolateContiguousFrame(layout, frame_pos);
+        frame_pos += increments[frame_index] * increment_scale;
+    }
+    return frame_pos;
+}
+
 struct SampleFetchOptions {
     Span<f64 const> increments; // Per output frame. Multiplied by increment_scale.
     f64 max_increment; // The largest value in increments (unscaled).
@@ -733,61 +815,33 @@ ALWAYS_INLINE NO_UBSAN inline u32 FetchSampleFrames(AudioData const& s,
             frame_index +
             ContiguousFramesAvailable(playhead, max_increment, bounds, (u32)out.size - frame_index);
         if (contiguous_end != frame_index) {
-            // Fast path.
-
-            // The general path's multiply and add are separate statements, so they never contract. These
-            // accumulations are single expressions, which would fuse to an FMA on targets that have one and
-            // round differently, drifting the playhead depending on which path a block took.
-#pragma clang fp contract(off)
-
+            // Fast path. The format is passed as a constant so that each case gets its own specialised
+            // loops.
+            auto const count = contiguous_end - frame_index;
             auto const layout = ContiguousTapLayoutFor(audio_data, playhead.inverse_data_lookup);
-            auto const increments = options.increments.data;
-            auto const increment_scale = options.increment_scale;
-            auto frame_pos = playhead.frame_pos;
-
-            switch (layout.channels) {
-                case 1: {
-                    // Interpolate 4 frames at once.
-                    for (; frame_index + 4 <= contiguous_end; frame_index += 4) {
-                        auto const frame_pos_0 = frame_pos;
-                        auto const frame_pos_1 = frame_pos_0 + (increments[frame_index] * increment_scale);
-                        auto const frame_pos_2 =
-                            frame_pos_1 + (increments[frame_index + 1] * increment_scale);
-                        auto const frame_pos_3 =
-                            frame_pos_2 + (increments[frame_index + 2] * increment_scale);
-                        frame_pos = frame_pos_3 + (increments[frame_index + 3] * increment_scale);
-                        auto const frames = InterpolateContiguousMonoFrameQuad(layout,
-                                                                               frame_pos_0,
-                                                                               frame_pos_1,
-                                                                               frame_pos_2,
-                                                                               frame_pos_3);
-                        f32x4 const frames_01 = __builtin_shufflevector(frames, frames, 0, 0, 1, 1);
-                        f32x4 const frames_23 = __builtin_shufflevector(frames, frames, 2, 2, 3, 3);
-                        __builtin_memcpy_inline(out.data + frame_index, &frames_01, sizeof(frames_01));
-                        __builtin_memcpy_inline(out.data + frame_index + 2, &frames_23, sizeof(frames_23));
-                    }
+            ContiguousFetchArgs const args {
+                .layout = layout,
+                .increments = options.increments.data + frame_index,
+                .increment_scale = options.increment_scale,
+                .out = out.data + frame_index,
+                .count = count,
+            };
+            switch (layout.format) {
+                case AudioSampleFormat::Int16:
+                    playhead.frame_pos =
+                        FetchContiguousFrames(args, playhead.frame_pos, AudioSampleFormat::Int16);
                     break;
-                }
-                case 2: {
-                    // Interpolate 2 frames at once.
-                    for (; frame_index + 2 <= contiguous_end; frame_index += 2) {
-                        auto const frame_pos_0 = frame_pos;
-                        auto const frame_pos_1 = frame_pos_0 + (increments[frame_index] * increment_scale);
-                        frame_pos = frame_pos_1 + (increments[frame_index + 1] * increment_scale);
-                        auto const frames =
-                            InterpolateContiguousStereoFramePair(layout, frame_pos_0, frame_pos_1);
-                        __builtin_memcpy_inline(out.data + frame_index, &frames, sizeof(frames));
-                    }
+                case AudioSampleFormat::Int24:
+                    playhead.frame_pos =
+                        FetchContiguousFrames(args, playhead.frame_pos, AudioSampleFormat::Int24);
                     break;
-                }
-                default: PanicIfReached();
+                case AudioSampleFormat::Float32:
+                    playhead.frame_pos =
+                        FetchContiguousFrames(args, playhead.frame_pos, AudioSampleFormat::Float32);
+                    break;
+                case AudioSampleFormat::Count: PanicIfReached();
             }
-
-            for (; frame_index < contiguous_end; ++frame_index) {
-                out.data[frame_index] = InterpolateContiguousFrame(layout, frame_pos);
-                frame_pos += increments[frame_index] * increment_scale;
-            }
-            playhead.frame_pos = frame_pos;
+            frame_index = contiguous_end;
         } else {
             // General path.
 
