@@ -30,7 +30,7 @@ struct AppConfig {
 enum class Orientation : u8 { Vertical, Horizontal };
 enum class Alignment : u8 { Start, End };
 enum class TextAlignment : u8 { Left, Right, Centre };
-enum class LabelStyle : u8 { Regular, DullColour, Bold, Heading };
+enum class LabelStyle : u8 { Regular, DullColour, Bold, Heading, Positive, NegativeBold };
 enum class ButtonStyle : u8 { Push, ExpandCollapseToggle };
 struct WidgetMargins {
     u16 l {}, r {}, t {}, b {};

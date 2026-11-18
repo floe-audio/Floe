@@ -17,6 +17,7 @@ enum class ComponentTypes : u8 {
 
 struct ComponentInfo {
     String name;
+    String short_name;
     KnownDirectoryType install_dir;
     String filename;
     int resource_id;
@@ -25,6 +26,7 @@ struct ComponentInfo {
 constexpr auto k_plugin_infos = Array {
     ComponentInfo {
         .name = "Floe CLAP Plugin v" FLOE_VERSION_STRING,
+        .short_name = "CLAP plugin",
         .install_dir = KnownDirectoryType::GlobalClapPlugins,
         .filename = path::Filename(CLAP_PLUGIN_BINARY_NAME),
         .resource_id = CLAP_PLUGIN_RESOURCE_ID,
@@ -32,6 +34,7 @@ constexpr auto k_plugin_infos = Array {
 #ifdef VST3_PLUGIN_BINARY_NAME
     ComponentInfo {
         .name = "Floe VST3 Plugin v" FLOE_VERSION_STRING,
+        .short_name = "VST3 plugin",
         .install_dir = KnownDirectoryType::GlobalVst3Plugins,
         .filename = path::Filename(VST3_PLUGIN_BINARY_NAME),
         .resource_id = VST3_PLUGIN_RESOURCE_ID,

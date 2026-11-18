@@ -481,9 +481,11 @@ void EditWidget(GuiFramework& framework, u32 id, EditWidgetOptions const& option
         switch (widget.label_style) {
             case LabelStyle::Regular:
             case LabelStyle::DullColour:
+            case LabelStyle::Positive:
                 SendMessageW(widget.window, WM_SETFONT, (WPARAM)framework.regular_font, TRUE);
                 break;
             case LabelStyle::Bold:
+            case LabelStyle::NegativeBold:
                 SendMessageW(widget.window, WM_SETFONT, (WPARAM)framework.bold_font, TRUE);
                 break;
             case LabelStyle::Heading:
@@ -674,7 +676,9 @@ u32 CreateWidget(GuiFramework& framework, u32 page, WidgetOptions options) {
                 HFONT f {};
                 switch (label_opts.style) {
                     case LabelStyle::DullColour:
+                    case LabelStyle::Positive:
                     case LabelStyle::Regular: f = framework.regular_font; break;
+                    case LabelStyle::NegativeBold:
                     case LabelStyle::Bold: f = framework.bold_font; break;
                     case LabelStyle::Heading: f = framework.heading_font; break;
                 }
@@ -1049,6 +1053,8 @@ static LRESULT CALLBACK PageWindowProc(HWND window, UINT msg, WPARAM w_param, LP
             if (static_widget->options.type.tag == WidgetType::Label) {
                 switch (static_widget->label_style) {
                     case LabelStyle::DullColour: SetTextColor(hdc_static, RGB(140, 140, 140)); break;
+                    case LabelStyle::Positive: SetTextColor(hdc_static, RGB(11, 106, 11)); break;
+                    case LabelStyle::NegativeBold: SetTextColor(hdc_static, RGB(164, 38, 44)); break;
                     case LabelStyle::Regular:
                     case LabelStyle::Heading:
                     case LabelStyle::Bold: SetTextColor(hdc_static, RGB(0, 0, 0)); break;

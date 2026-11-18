@@ -64,6 +64,17 @@ Once Floe is installed, it needs some sounds. See [Install Packages](./install-p
 Next, see [Install <LibraryName /> Package](./install-packages).
 </ManualOnly>
 
+## Troubleshooting
+
+Windows:
+- **Floe is in use** — close your DAW and any other apps using Floe, then try again.
+- **Windows is blocking it** — check your antivirus. If _Controlled folder access_ is on in Windows Security, allow the Floe installer through it.
+- **Still failing** — install by hand using the manual-install files.
+
+macOS:
+- **Silicon vs Intel** — ensure you've downloaded the right version for your system. Floe has separate versions for Intel Mac vs Apple Silicon (M-series) Macs.
+- **Rosetta mode** — if you have an Apple Silicon machine, but your DAW is running in Rosetta mode, it will not find Apple Silicon Floe. You need to use the native version of your DAW (no Rosetta mode), or alternatively, you may be able to install the Intel version of Floe to work with the DAW in Rosetta mode.
+
 ## Updating
 
 To update Floe, download and run the latest installer, or run the Linux command again. The new version replaces the old one and is fully backwards-compatible. If you installed by hand, replace the old files with the new ones.
@@ -81,3 +92,4 @@ To stop Floe checking, untick _Check for updates_ in <FAIcon icon="fa-solid fa-c
 <ManualExclude types={['library']}>
 The same place has an option to be told about beta versions too if you want to try new features early: see [Beta Testing](../about-the-project/beta-testing).
 </ManualExclude>
+
