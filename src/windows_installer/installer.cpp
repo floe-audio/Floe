@@ -5,6 +5,7 @@
 
 #include <windows.h>
 //
+#include <restartmanager.h>
 #include <shlobj.h>
 #include <stb_image.h>
 
@@ -62,7 +63,12 @@ struct Component {
     Span<u8 const> data {};
 };
 
-using InstallResult = ErrorCodeOr<void>;
+using AppNames = DynamicArrayBounded<char, 250>;
+
+struct InstallResult {
+    ErrorCodeOr<void> outcome = k_success;
+    AppNames apps_using_file {};
+};
 
 using InstallationResults = Array<InstallResult, ToInt(ComponentTypes::Count)>;
 
@@ -159,7 +165,53 @@ static String DescribeExistingFileState(String file, ArenaAllocator& arena) {
     return "exists"_s;
 }
 
-static ErrorCodeOr<void> TryInstall(Component const& comp, u64& seed) {
+// Comma-separated friendly names of the apps that have the file open or loaded.
+static ErrorCodeOr<AppNames> AppsUsingFile(String file, ArenaAllocator& arena) {
+    DWORD session {};
+    WCHAR session_key[CCH_RM_SESSION_KEY + 1] {};
+    if (auto const r = RmStartSession(&session, 0, session_key); r != ERROR_SUCCESS)
+        return Win32ErrorCode(r, "RmStartSession");
+    DEFER { RmEndSession(session); };
+
+    auto const wide_file = WidenAllocNullTerm(arena, file).Value();
+    LPCWSTR registered_file = wide_file.data;
+    if (auto const r = RmRegisterResources(session, 1, &registered_file, 0, nullptr, 0, nullptr);
+        r != ERROR_SUCCESS)
+        return Win32ErrorCode(r, "RmRegisterResources");
+
+    UINT num_infos_needed = 0;
+    UINT num_infos = 0;
+    DWORD reboot_reasons = 0;
+    auto get_list_result = RmGetList(session, &num_infos_needed, &num_infos, nullptr, &reboot_reasons);
+    if (get_list_result == ERROR_SUCCESS) return AppNames {};
+    if (get_list_result != ERROR_MORE_DATA) return Win32ErrorCode(get_list_result, "RmGetList");
+
+    auto const infos = arena.AllocateExactSizeUninitialised<RM_PROCESS_INFO>(num_infos_needed);
+    num_infos = (UINT)infos.size;
+    get_list_result = RmGetList(session, &num_infos_needed, &num_infos, infos.data, &reboot_reasons);
+    if (get_list_result != ERROR_SUCCESS) return Win32ErrorCode(get_list_result, "RmGetList");
+
+    AppNames names {};
+    for (auto const info_index : Range((usize)num_infos)) {
+        auto const wide_name = FromNullTerminated(infos[info_index].strAppName);
+
+        // An app can have several processes using the file.
+        auto already_listed = false;
+        for (auto const earlier_index : Range(info_index))
+            if (FromNullTerminated(infos[earlier_index].strAppName) == wide_name) already_listed = true;
+        if (already_listed) continue;
+
+        auto const name = TRY_OPT_OR(Narrow(arena, wide_name), continue);
+        if (!name.size) continue;
+        auto const separator = names.size ? ", "_s : ""_s;
+        if (names.size + separator.size + name.size > names.Capacity()) break;
+        dyn::AppendSpan(names, separator);
+        dyn::AppendSpan(names, name);
+    }
+    return names;
+}
+
+static InstallResult TryInstall(Component const& comp, u64& seed) {
     ASSERT(comp.data.size != 0);
     ASSERT(comp.info.filename.size != 0);
     ASSERT(IsValidUtf8(comp.info.filename));
@@ -167,19 +219,25 @@ static ErrorCodeOr<void> TryInstall(Component const& comp, u64& seed) {
     ArenaAllocatorWithInlineStorage<3000> arena {Malloc::Instance()};
 
     auto const path = path::Join(arena, Array {comp.install_dir, comp.info.filename});
-    TRY_OR(WriteFileViaRename(path, comp.data, seed, arena), {
-        if (error != FilesystemError::UsedByAnotherProcess)
-            ReportError(ErrorLevel::Warning,
-                        k_nullopt,
-                        "Failed to install {}: {} (folder: {}, existing file: {})",
-                        comp.info.name,
-                        error,
-                        DescribeInstallFolderState(comp.install_dir, arena),
-                        DescribeExistingFileState(path, arena));
-        return error;
-    });
+    auto const write_outcome = WriteFileViaRename(path, comp.data, seed, arena);
+    if (!write_outcome.HasError()) return {};
 
-    return k_success;
+    InstallResult result {.outcome = write_outcome.Error()};
+
+    auto const apps_using_file = AppsUsingFile(path, arena);
+    if (apps_using_file.HasValue()) result.apps_using_file = apps_using_file.Value();
+    if (result.apps_using_file.size) return result;
+
+    if (write_outcome.Error() != FilesystemError::UsedByAnotherProcess)
+        ReportError(ErrorLevel::Warning,
+                    k_nullopt,
+                    "Failed to install {}: {} (folder: {}, existing file: {}, apps using file: {})",
+                    comp.info.name,
+                    write_outcome.Error(),
+                    DescribeInstallFolderState(comp.install_dir, arena),
+                    DescribeExistingFileState(path, arena),
+                    apps_using_file.HasError() ? "unknown"_s : "none"_s);
+    return result;
 }
 
 static void TryInstallUninstaller(u64& seed) {
@@ -207,9 +265,9 @@ static void BackgroundInstallingThread(Application& app) {
     for (auto const i : Range(ToInt(ComponentTypes::Count))) {
         if (!app.components_selected[i]) continue;
         auto const& comp = app.components[i];
-        InstallResult outcome = k_success;
-        if (comp.data.size != 0) outcome = TryInstall(comp, seed);
-        app.installation_results.Use([i, outcome](InstallationResults& r) { r[i] = outcome; });
+        InstallResult result {};
+        if (comp.data.size != 0) result = TryInstall(comp, seed);
+        app.installation_results.Use([i, &result](InstallationResults& r) { r[i] = result; });
     }
 
     TryInstallUninstaller(seed);
@@ -247,7 +305,7 @@ static void SwitchPage(Application& app, GuiFramework& framework, Pages page) {
 
             bool failure = false;
             for (auto const& result : installation_results)
-                if (result.HasError()) failure = true;
+                if (result.outcome.HasError()) failure = true;
 
             if (failure)
                 label_text_override = "❌ Installation failed"_s;
@@ -258,7 +316,7 @@ static void SwitchPage(Application& app, GuiFramework& framework, Pages page) {
             for (auto const comp_index : Range(ToInt(ComponentTypes::Count))) {
                 if (!app.components_selected[comp_index]) continue;
                 auto const result = installation_results[comp_index];
-                if (!result.HasError())
+                if (!result.outcome.HasError())
                     fmt::Append(summary_text,
                                 "Installed {} ({}) to:\n{}"_s,
                                 app.components[comp_index].info.name,
@@ -270,10 +328,14 @@ static void SwitchPage(Application& app, GuiFramework& framework, Pages page) {
                                 app.components[comp_index].info.name,
                                 app.components[comp_index].info.filename,
                                 app.components[comp_index].install_dir,
-                                result.Error());
-                    if (result.Error() == FilesystemError::UsedByAnotherProcess)
+                                result.outcome.Error());
+                    if (result.apps_using_file.size)
+                        fmt::Append(summary_text,
+                                    "\nFloe is being used by: {}. Close anything listed and try again.",
+                                    result.apps_using_file);
+                    else if (result.outcome.Error() == FilesystemError::UsedByAnotherProcess)
                         fmt::Append(summary_text, "\nTry closing your DAW and trying again.");
-                    else if (result.Error() == FilesystemError::AccessDenied)
+                    else if (result.outcome.Error() == FilesystemError::AccessDenied)
                         fmt::Append(
                             summary_text,
                             "\nTry closing your DAW and trying again. If it still fails, security software may be blocking the installer: check your antivirus, and if Windows Security's Controlled Folder Access is on, allow the installer through it.");
@@ -627,7 +689,7 @@ Application* CreateApplication(GuiFramework& framework, u32 root_layout_id) {
 int DestroyApplication(Application& app, GuiFramework&) {
     int result = 0;
     for (auto const& r : app.installation_results.Use([](InstallationResults const& r) { return r; }))
-        if (r.HasError()) {
+        if (r.outcome.HasError()) {
             result = 1;
             break;
         }

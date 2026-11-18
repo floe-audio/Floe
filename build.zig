@@ -2960,6 +2960,7 @@ fn buildWindowsInstaller(ctx: *const BuildContext, cfg: *const TargetConfig, dep
     exe.linkSystemLibrary("gdi32");
     exe.linkSystemLibrary("version");
     exe.linkSystemLibrary("comctl32");
+    exe.linkSystemLibrary("rstrtmgr");
 
     addWindowsEmbedInfo(exe, .{
         .name = "Floe Installer",
