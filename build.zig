@@ -1814,6 +1814,7 @@ fn buildPluginLib(ctx: *const BuildContext, cfg: *const TargetConfig, deps: stru
             "processing_utils/midi.cpp",
             "processing_utils/mpe.cpp",
             "processing_utils/peak_meter.cpp",
+            "processing_utils/scoped_fp_environment.cpp",
             "processing_utils/true_peak_detector.cpp",
             "processing_utils/volume_fade.cpp",
             "processor/effect_bitcrush.cpp",

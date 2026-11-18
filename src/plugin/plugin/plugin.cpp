@@ -32,7 +32,7 @@
 #include "engine/shared_engine_systems.hpp"
 #include "gui/core/gui_prefs.hpp"
 #include "gui_framework/app_window.hpp"
-#include "processing_utils/scoped_denormals.hpp"
+#include "processing_utils/scoped_fp_environment.hpp"
 #include "processor/processor.hpp"
 
 //
@@ -1624,7 +1624,7 @@ static bool ClapActivate(const struct clap_plugin* plugin,
 
         if (floe.active) return true;
 
-        ScopedNoDenormals const no_denormals;
+        ScopedFloatingPointEnvironment const fp_environment {{.mask_exceptions = true}};
 
         // The CLAP spec says neither min nor max can be 0. But we found this can be the case. It's easy
         // enough for us to handle this case so we do.
@@ -1840,7 +1840,7 @@ static clap_process_status ClapProcess(const struct clap_plugin* plugin, clap_pr
         // activate(). For one, VST3-Validator on Windows will send blocks smaller than this. It's easy for us
         // to handle so we do.
 
-        ScopedNoDenormals const no_denormals;
+        ScopedFloatingPointEnvironment const fp_environment {{.mask_exceptions = false}};
         return g_processor_callbacks.process(floe.engine->processor, *process);
     } catch (PanicException) {
         return CLAP_PROCESS_ERROR;

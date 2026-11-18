@@ -93,6 +93,7 @@ __attribute__((section(".preinit_array"), used)) static void (*g_tsan_preinit)()
     X(RegisterRandomTests)                                                                                   \
     X(RegisterSampleLibraryServerTests)                                                                      \
     X(RegisterScanFoldersTests)                                                                              \
+    X(RegisterScopedFloatingPointEnvironmentTests)                                                           \
     X(RegisterSamplePlayheadTests)                                                                           \
     X(RegisterSentryTests)                                                                                   \
     X(RegisterLegacyParamLogicTests)                                                                         \
