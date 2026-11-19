@@ -803,10 +803,12 @@ AllocateBenchmarkAudio(u32 num_frames, u8 channels, AudioSampleFormat format) {
     auto const num_samples = (usize)num_frames * channels;
     auto const storage = PageAllocator::Instance().AllocateExactSizeUninitialised<u8>(
         (num_samples * BytesPerSample(format)) + k_audio_data_padding_bytes);
-    for (auto const sample_index : Range(num_samples))
+    for (auto const sample_index : Range(num_samples)) {
+        auto const frame_index = sample_index / channels;
         WriteSampleInFormat(storage.data + (sample_index * BytesPerSample(format)),
-                            Sin(k_two_pi<f32> * (f32)(sample_index / channels) / 400.0f) * 0.8f,
+                            Sin(k_two_pi<f32> * (f32)frame_index / 400.0f) * 0.8f,
                             format);
+    }
     return {
         .hash = 0,
         .channels = channels,
