@@ -45,6 +45,16 @@ ErrorCodeOr<void> HttpsGet(String url, Writer writer, RequestOptions options) {
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
 
+    struct curl_slist* curl_headers = nullptr;
+    DEFER { curl_slist_free_all(curl_headers); };
+    if (options.headers.size) {
+        for (auto const& header : options.headers) {
+            ASSERT(header.size);
+            curl_headers = curl_slist_append(curl_headers, NullTerminated(header, arena));
+        }
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, curl_headers);
+    }
+
     char error_buffer[CURL_ERROR_SIZE] {};
     curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, error_buffer);
     auto const return_code = curl_easy_perform(curl);
