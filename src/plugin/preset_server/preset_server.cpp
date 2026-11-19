@@ -1196,7 +1196,7 @@ static void ServerThread(PresetServer& server) {
 
     ArenaAllocator scratch_arena {PageAllocator::Instance()};
 
-    while (!server.end_thread.Load(LoadMemoryOrder::Relaxed)) {
+    while (!server.end_thread.Load(LoadMemoryOrder::Acquire)) {
         scratch_arena.ResetCursorAndConsolidateRegions();
 
         server.work_signaller.WaitUntilSignalledOrSpurious(250u);

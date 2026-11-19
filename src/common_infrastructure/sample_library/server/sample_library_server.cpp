@@ -1193,7 +1193,7 @@ static void ServerThreadProc(Server& server) {
         if (watcher) DestoryDirectoryWatcher(*watcher);
     };
 
-    while (!server.end_thread.Load(LoadMemoryOrder::Relaxed)) {
+    while (!server.end_thread.Load(LoadMemoryOrder::Acquire)) {
         PendingResources pending_resources {
             .server_thread_id = server.server_thread_id,
         };
