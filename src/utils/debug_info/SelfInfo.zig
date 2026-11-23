@@ -180,8 +180,8 @@ fn lookupModuleDyld(self: *SelfInfo, address: usize) !*Module {
                 const segment_cmd = cmd.cast(macho.segment_command_64).?;
                 if (!mem.eql(u8, "__TEXT", segment_cmd.segName())) continue;
 
-                const seg_start = segment_cmd.vmaddr + vmaddr_slide;
-                const seg_end = seg_start + segment_cmd.vmsize;
+                const seg_start = segment_cmd.vmaddr +% vmaddr_slide;
+                const seg_end = seg_start +% segment_cmd.vmsize;
                 if (address >= seg_start and address < seg_end) {
                     if (self.address_map.get(base_address)) |obj_di| {
                         return obj_di;
@@ -191,9 +191,9 @@ fn lookupModuleDyld(self: *SelfInfo, address: usize) !*Module {
                         const sect_addr: usize = @intCast(sect.addr);
                         const sect_size: usize = @intCast(sect.size);
                         if (mem.eql(u8, "__unwind_info", sect.sectName())) {
-                            unwind_info = @as([*]const u8, @ptrFromInt(sect_addr + vmaddr_slide))[0..sect_size];
+                            unwind_info = @as([*]const u8, @ptrFromInt(sect_addr +% vmaddr_slide))[0..sect_size];
                         } else if (mem.eql(u8, "__eh_frame", sect.sectName())) {
-                            eh_frame = @as([*]const u8, @ptrFromInt(sect_addr + vmaddr_slide))[0..sect_size];
+                            eh_frame = @as([*]const u8, @ptrFromInt(sect_addr +% vmaddr_slide))[0..sect_size];
                         }
                     }
 
@@ -247,7 +247,7 @@ fn lookupModuleNameDyld(self: *SelfInfo, address: usize) ?[]const u8 {
                 const segment_cmd = cmd.cast(macho.segment_command_64).?;
                 if (!mem.eql(u8, "__TEXT", segment_cmd.segName())) continue;
 
-                const original_address = address - vmaddr_slide;
+                const original_address = address -% vmaddr_slide;
                 const seg_start = segment_cmd.vmaddr;
                 const seg_end = seg_start + segment_cmd.vmsize;
                 if (original_address >= seg_start and original_address < seg_end) {
@@ -691,7 +691,7 @@ pub const Module = switch (native_os) {
         } {
             nosuspend {
                 // Translate the VA into an address into this object
-                const relocated_address = address - self.vmaddr_slide;
+                const relocated_address = address -% self.vmaddr_slide;
 
                 // Find the .o file where this symbol is defined
                 const symbol = machoSearchSymbols(self.symbols, relocated_address) orelse return .{

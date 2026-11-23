@@ -211,6 +211,7 @@ fn addImageAndSegmentsMacho(self: *ModuleInfo, address: usize) !void {
         const header = std.c._dyld_get_image_header(i) orelse continue;
         const base_address = @intFromPtr(header);
         if (address < base_address) continue;
+        // dyld's slide is a signed intptr_t but Zig declares it as usize, so we must use wrapping arithmetic.
         const vmaddr_slide = std.c._dyld_get_image_vmaddr_slide(i);
 
         var text_segment: ?Segment = null;
@@ -229,11 +230,11 @@ fn addImageAndSegmentsMacho(self: *ModuleInfo, address: usize) !void {
             .SEGMENT_64 => {
                 const segment_cmd = cmd.cast(std.macho.segment_command_64).?;
                 if (std.mem.eql(u8, "__PAGEZERO", segment_cmd.segName())) continue;
-                max_vmaddr = @max(max_vmaddr, segment_cmd.vmaddr + segment_cmd.vmsize);
+                max_vmaddr = @max(max_vmaddr, segment_cmd.vmaddr +% segment_cmd.vmsize);
                 if (!std.mem.eql(u8, "__TEXT", segment_cmd.segName())) continue;
                 text_vmaddr = segment_cmd.vmaddr;
-                const seg_start = segment_cmd.vmaddr + vmaddr_slide;
-                text_segment = .{ .start = seg_start, .end = seg_start + segment_cmd.vmsize };
+                const seg_start = segment_cmd.vmaddr +% vmaddr_slide;
+                text_segment = .{ .start = seg_start, .end = seg_start +% segment_cmd.vmsize };
             },
             .UUID => uuid = cmd.cast(std.macho.uuid_command).?.uuid,
             else => {},
