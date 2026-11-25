@@ -60,6 +60,10 @@ Floe shows a summary of what it installed, with a couple of optional extras. Tic
 - **Load preset** — load <LibraryName>the preset bank</LibraryName>'s default preset. If Floe was blank when you installed, this preset is loaded for you, so the option isn't shown.
 - **Send package file to Trash** — delete the package file. Floe doesn't need it once it's installed, though you might like to keep a copy as a backup.
 
+## Troubleshooting
+
+On macOS, an error saying _access is denied to this file or folder_ (FS4) means macOS is stopping your DAW from reading the package file. macOS protects folders such as Desktop, Documents and Downloads, so move the package file to the Music folder inside your home folder (in Finder, choose Go → Home, then open Music) and install it from there. Alternatively, allow your DAW access to the folder in System Settings → Privacy & Security → Files and Folders.
+
 ## What is a package?
 
 A package is simply how content is delivered to Floe.<ManualExclude types={['library']}> It usually holds one sample library plus a bank of factory presets for it, but it can hold any mix: just presets, several libraries, or both.</ManualExclude><ManualOnly types={['library']}> The <LibraryName /> package holds the sample library together with its factory presets.</ManualOnly>

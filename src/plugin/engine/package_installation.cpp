@@ -519,6 +519,12 @@ static bool MirageIsInstalled() {
 static InstallJob::State OpenPackageFile(InstallJob& job) {
     job.file_reader = TRY_OR(Reader::FromFile(job.path), {
         fmt::Append(job.error_buffer, "Couldn't read file: {u}\n", error);
+        if constexpr (IS_MACOS) {
+            if (error == FilesystemError::AccessDenied)
+                dyn::AppendSpan(job.error_buffer,
+                                "macOS may be blocking your DAW from this folder. Try moving the file to the "
+                                "Music folder in your home folder.\n"_s);
+        }
         return InstallJob::State::DoneError;
     });
 
