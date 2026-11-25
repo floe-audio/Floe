@@ -5,6 +5,7 @@
 // We use this to test HTTP client implementations without needing external dependencies.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const net = std.net;
 const http = std.http;
 const json = std.json;
@@ -60,6 +61,15 @@ fn serverLoop(self: *TestHttpServer) void {
         };
         defer connection.stream.close();
 
+        // On BSD/macOS accepted sockets inherit O_NONBLOCK from the listener, causing reads to fail
+        // with WouldBlock if the client hasn't sent everything yet.
+        if (builtin.os.tag != .windows) {
+            setBlocking(connection.stream.handle) catch |err| {
+                std.log.err("Failed to set connection to blocking: {}", .{err});
+                continue;
+            };
+        }
+
         var server = http.Server.init(connection, &header_buffer);
 
         while (server.state == .ready and !self.should_stop.load(.acquire)) {
@@ -77,6 +87,15 @@ fn serverLoop(self: *TestHttpServer) void {
             };
         }
     }
+}
+
+fn setBlocking(handle: std.posix.socket_t) !void {
+    const flags = try std.posix.fcntl(handle, std.posix.F.GETFL, 0);
+    const nonblock_bit: usize = @as(
+        std.meta.Int(.unsigned, @bitSizeOf(std.posix.O)),
+        @bitCast(std.posix.O{ .NONBLOCK = true }),
+    );
+    _ = try std.posix.fcntl(handle, std.posix.F.SETFL, flags & ~nonblock_bit);
 }
 
 fn handleRequest(request: *http.Server.Request) !void {
@@ -134,7 +153,7 @@ fn handlePost(request: *http.Server.Request) !void {
 
     // Read request body
     const reader = try request.reader();
-    const body = reader.readAllAlloc(allocator, 8192) catch "";
+    const body = try reader.readAllAlloc(allocator, 8192);
 
     // Build headers object
     var headers_obj = json.ObjectMap.init(allocator);
