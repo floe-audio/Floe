@@ -30,6 +30,8 @@ Floe's GUI has different base styles for different parts of the GUI. For modals 
 
 Floe's GUI can be scaled to any size (maintaining aspect ratio). As such, we use 'window width', WW, units sometimes. Within standard GUI code, we can use free functions WwToPixels and PixelsToWw.
 
+Time: anything that affects what's drawn (animations, timeouts, auto-dismissing) must use the frame clock, GuiIo().in.current_time, not TimePoint::Now(). The frame clock isn't always real time, for example when rendering offscreen frames at a fixed frame rate. Real time is fine for bookkeeping that doesn't change the visuals, such as cache eviction.
+
 Style guidelines:
 - Use colours from the defined set: colours.hpp (ToU32)
 - Consider beautiful, minimal, UX-friendly design

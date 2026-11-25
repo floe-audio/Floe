@@ -30,7 +30,9 @@ void NotificationsPanel(GuiBuilder& builder, Notifications& notifications) {
 
         auto const config = n.get_diplay_info(builder.arena);
 
-        if (config.dismissable && n.time_added.SecondsFromNow() > k_dismiss_seconds) {
+        auto const seconds_since_added = GuiIo().in.current_time - n.time_added;
+
+        if (config.dismissable && seconds_since_added > k_dismiss_seconds) {
             next = notifications.Remove(it);
             continue;
         }
@@ -83,7 +85,7 @@ void NotificationsPanel(GuiBuilder& builder, Notifications& notifications) {
                                        });
             if (auto const r = BoxRect(builder, spinner)) {
                 auto const window_rect = builder.imgui.ViewportRectToWindowRect(*r);
-                auto const angle = (f32)n.time_added.SecondsFromNow() * k_pi<f32>;
+                auto const angle = (f32)seconds_since_added * k_pi<f32>;
                 auto* dl = builder.imgui.draw_list;
                 dl->PathArcTo(window_rect.Centre(),
                               window_rect.w * 0.4f,

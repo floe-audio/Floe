@@ -7,6 +7,7 @@
 #include "os/misc.hpp"
 
 #include "gui/core/gui_fwd.hpp"
+#include "gui_framework/gui_frame.hpp"
 
 struct NotificationDisplayInfo {
     enum class IconType : u8 { None, Info, Success, Error, Busy };
@@ -51,7 +52,7 @@ struct Notifications : BoundedList<Notification, 10> {
         *Super::AppendUninitalisedOverwrite() = {
             .get_diplay_info = get_display_info,
             .id = id,
-            .time_added = TimePoint::Now(),
+            .time_added = GuiIo().in.current_time,
         };
         return true;
     }
