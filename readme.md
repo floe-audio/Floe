@@ -14,42 +14,38 @@ SPDX-License-Identifier: CC0-1.0
 ---
 
 ### Streamlined sample-based instrument platform
-Floe is a CLAP, VST3 and AU plugin for Windows, macOS, and Linux. It loads and plays sample libraries in the Floe format. Visit [floe.audio](https://floe.audio) for more information about the project.
-
-FrozenPlain, Sam's sample library company, is currently Floe's main user and funder, so its needs necessarily set much of the direction. Sam does make time for community requests and passion projects, but if you'd like to see other priorities, consider [sponsoring](https://floe.audio/docs/about-the-project/sponsorship) Floe's development. Thank you to our existing supporters for their contributions.
+This is the source code for Floe, a CLAP, VST3 and AU plugin for Windows, macOS, and Linux. It loads and plays sample libraries in the Floe format. Visit [floe.audio](https://floe.audio) for more information about the project.
 
 ## License
 This project is licensed under GPL version 3 or later. See the LICENCES folder for the full licence text. We follow the [REUSE](https://reuse.software/) recommendations for this repository.
 
 ## Building
 ### Quick start
-- Download [Zig 0.14.0](https://ziglang.org/download/)
-- Clone this repository
+- Download and install [Zig 0.14.0](https://ziglang.org/download/)
+- Clone this repository `git clone https://github.com/floe-audio/Floe.git`
 - Run `zig build install` in the root of the project
 - Binaries are created in the `zig-out` directory
 
-### More info
-We typically use our Nix development environment on Linux or macOS to build Floe, and cross-compile to Windows. Enter this environment by installing Nix, enabling Nix flakes, and running `nix develop` in the root of the project. This ensures the correct Zig version and all dependencies are available. However, the Nix environment is not often necessary.
+### Build options
+Run `zig build --help` for every step and option. The main ones:
+- **Release build:** `-Dbuild-mode=production` (default is `development`; there's also `performance_profiling`).
+- **Cross-compile:** `-Dtargets=windows,mac_arm` (comma-separated; also `linux`, `mac_x86`). Linux binaries can only be built on Linux.
+- **Install to plugin folders:** `--prefix <dir>` puts plugins in the standard subfolders. Use `~` on Linux, `~/Library/Audio/Plug-Ins` on macOS, `%LOCALAPPDATA%\Programs\Common` on Windows. Or copy them from `zig-out` yourself.
 
-You can also build Floe as a Nix package: `nix build` produces a production build, and the `floe-profiling` and `floe-development` flake outputs build the other modes (Linux only). On NixOS, the resulting binaries find their runtime libraries via [nix-ld](https://github.com/nix-community/nix-ld).
+### Linux dependencies
+- **Build:** curl, X11, OpenGL, GLX, Vulkan (usually preinstalled). ALSA too, but only for the dev-only standalone.
+- **Runtime:** `xdg-open`, `zenity`.
 
-To install it into your Nix profile, run `nix profile add .#floe`. This puts the command-line binaries in your profile's `bin` directory and the plugins in `lib/clap` and `lib/vst3`, so setups that wire up those profile directories (such as [musnix](https://github.com/musnix/musnix)) pick the plugins up automatically.
+### Nix
+Optional, but it's what we use day to day. It pins Zig and all dependencies.
+- **Dev shell:** `nix develop` (flakes need to be enabled).
+- **Package (Linux):** `nix build` gives a production build; `.#floe-profiling` and `.#floe-development` give the other modes. NixOS needs [nix-ld](https://github.com/nix-community/nix-ld).
+- **Profile install:** `nix profile add .#floe` installs binaries to `bin`, plugins to `lib/clap` and `lib/vst3` (picked up by setups like [musnix](https://github.com/musnix/musnix)). Only one variant fits at a time; swap with `nix profile remove --regex '.*floe.*' ; nix profile add .#floe-development`.
 
-The variants share binary names, so only one fits in a profile at once. Swap with `nix profile remove --regex '.*floe.*' ; nix profile add .#floe-development`.
-
-Run `zig build --help` to see more options.
-
-To build an optimised release binaries, do something like `zig build install -Dbuild-mode=production`. You can also use Zig's standard `--prefix` option to specify an installation directory. We have configured this so that it will install audio plugins to the standard subfolders on each platform. On Linux, set the prefix to your home directory, on macOS set it to `~/Library/Audio/Plug-Ins`, and on Windows set it to `%LOCALAPPDATA%\Programs\Common`. Alternatively, omit the `--prefix` option and copy the binaries from the `zig-out` directory manually to wherever you need them.
-
-We support cross-compiling using the `-Dtargets=` option. So for example you can compile the Windows and macOS plugins on a Linux machine. Valid targets are `x86_64-windows`, `x86_64-linux`, `x86_64-macos` and `aarch64-macos`. You can specify multiple targets separated by commas. Note that we don't support cross-compiling to Linux from any OS; you need to be on Linux to build Linux binaries at the moment.
-
-Building on Linux, you will need libraries for curl, x11, OpenGL, GLX, Vulkan (handled automatically in the Nix environment); these are also normally installed by default on your distro. ALSA is additionally needed, but only for the standalone build (a dev-only artifact). Runtime dependencies are `xdg-open` and `zenity`.
-
-### Testing
-Run `zig build test` to run the unit tests. Add arguments after `--` to configure our test runner's command-line options. We also have easy to use testing using pluginval, vst3-validator, clap-validator, valgrind, thread sanitizer, clang-tidy; see `zig build --help`.
-
-### Scripts
-Rather than use bash for miscellaneous development scripts, we use Zig. The scripts.zig file is automatically compiles and then is run via the CLI. See `zig build --help` for a list of available scripts.
+### Testing and scripts
+- **Unit tests:** `zig build test`. Test runner options go after `--`.
+- **Other checks:** `test:*` and `check:*` steps run pluginval, clap-validator, vst3-validator, valgrind, clang-tidy and more. Add `-Dsanitize-thread` for thread sanitizer.
+- **Dev scripts:** `script:*` steps, written in Zig rather than bash.
 
 ## About this codebase
 Floe is written in C++ and we use Zig for the build system. Eventually, we're considering using Zig for the entire codebase.
@@ -64,6 +60,8 @@ Floe's website is in the `website` folder and it's built with Docusaurus. We hav
 
 ## Discussion
 Feel free to use the discussions on GitHub for questions, feedback, and ideas. Report bugs to the Github issue tracker. Also, FrozenPlain has a Floe section on their [forum](https://forum.frozenplain.com).
+
+FrozenPlain, Sam's sample library company, is currently Floe's main user and funder, so its needs necessarily set much of the direction. Sam does make time for community requests and passion projects, but if you'd like to see other priorities, consider [sponsoring](https://floe.audio/docs/about-the-project/sponsorship) Floe's development. Thank you to our existing supporters for their contributions.
 
 ### CI
 [Bencher](https://bencher.dev/perf/floe-benchmarks)
