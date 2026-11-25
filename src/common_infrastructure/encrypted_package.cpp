@@ -13,8 +13,12 @@ ErrorCodeCategory const g_encrypted_package_error_category = {
     .message = [](Writer const& writer, ErrorCode code) -> ErrorCodeOr<void> {
         String str {};
         switch ((EncryptedPackageError)code.code) {
-            case EncryptedPackageError::InvalidHeader: str = "invalid encrypted package header"; break;
-            case EncryptedPackageError::DecryptionFailed: str = "decryption failed (wrong key?)"; break;
+            case EncryptedPackageError::InvalidHeader:
+                str = "the package file is damaged or isn't a Floe package";
+                break;
+            case EncryptedPackageError::DecryptionFailed:
+                str = "the package file is damaged or incomplete, try downloading it again";
+                break;
         }
         return writer.WriteChars(str);
     },

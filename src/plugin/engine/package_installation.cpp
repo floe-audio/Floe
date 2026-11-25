@@ -525,7 +525,7 @@ static InstallJob::State OpenPackageFile(InstallJob& job) {
     if (encrypted_package::HasEncryptedPackageExtension(job.path)) {
         job.is_encrypted = true;
         job.encrypted_header = TRY_OR(encrypted_package::ReadHeader(*job.file_reader), {
-            fmt::Append(job.error_buffer, "Invalid encrypted package: {u}\n", error);
+            fmt::Append(job.error_buffer, "Couldn't open this package: {u}\n", error);
             return InstallJob::State::DoneError;
         });
         return InstallJob::State::AwaitingLicenseKey;
@@ -1013,7 +1013,7 @@ ResumeWithMatchedLicense(InstallJob& job, license::LicensePayload const& payload
     if (dr_result.HasError()) {
         job.file_reader = Move(job.encrypted_file_reader);
         dyn::Clear(job.error_buffer);
-        fmt::Append(job.error_buffer, "Failed to set up decryption: {u}", dr_result.Error());
+        fmt::Append(job.error_buffer, "Couldn't unlock this package: {u}", dr_result.Error());
         return false;
     }
     job.decrypting_reader = dr_result.Value();
@@ -1046,8 +1046,9 @@ bool OnLicenseKeyReceived(InstallJob& job, ThreadPool& thread_pool) {
     // Verify the license
     auto const license_result = license::ParseAndVerify(job.pasted_license_text);
     if (license_result.HasError()) {
+        LogInfo(ModuleName::Package, "license key rejected: {}", license_result.Error());
         dyn::Clear(job.error_buffer);
-        fmt::Append(job.error_buffer, "Invalid license key: {u}", license_result.Error());
+        fmt::Append(job.error_buffer, "This license key isn't valid. Check that it was copied in full.");
         return false;
     }
 
