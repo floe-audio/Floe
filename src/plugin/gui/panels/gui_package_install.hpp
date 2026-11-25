@@ -16,6 +16,7 @@
 #include "gui/elements/gui_constants.hpp"
 #include "gui/elements/gui_modal.hpp"
 #include "gui/overlays/gui_notifications.hpp"
+#include "gui/panels/gui_prefs_panel.hpp"
 #include "gui_framework/gui_builder.hpp"
 
 struct PackageInstallPanelState {
@@ -23,16 +24,24 @@ struct PackageInstallPanelState {
     LicenseInputMode license_input_mode = LicenseInputMode::AllKeysAtOnce;
 
     struct SuccessfulInstall {
+        struct ComponentResult {
+            DynamicArrayBounded<char, 100> name {};
+            String action_taken {}; // Static string.
+            bool installed {};
+        };
+
         DynamicArray<char> package_path {Malloc::Instance()};
-        DynamicArrayBounded<char, k_notification_buffer_size - 160> components_text {};
+        DynamicArrayBounded<ComponentResult, 8> components {};
         u8 num_truncated {};
         DynamicArrayBounded<char, 128> license_email {};
 
         // Empty if the package's preset bank doesn't name a usable default preset.
         DynamicArray<char> default_preset_path {Malloc::Instance()};
         bool default_preset_auto_loaded {};
-        bool default_preset_loaded {};
-        bool package_file_trashed {};
+
+        // Applied when the dialogue is closed with Done.
+        bool load_default_preset {};
+        bool trash_package_file {};
     };
     DynamicArrayBounded<SuccessfulInstall, 16> successful_installs {};
 };
@@ -441,73 +450,30 @@ PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs&
     }
 }
 
-// A row in the completion dialogue's 'Optional' group: wrapping description on the left, a button on the
-// right that becomes a done marker once the action has been taken. Returns true when clicked.
-static bool ActionRow(GuiBuilder& builder,
-                      Box parent,
-                      String text,
-                      String button_text,
-                      String done_text,
-                      bool done,
-                      u64 id_extra) {
-    auto const row = DoBox(builder,
-                           {
-                               .parent = parent,
-                               .id_extra = id_extra,
-                               .layout {
-                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                   .contents_gap = k_medium_gap,
-                                   .contents_direction = layout::Direction::Row,
-                                   .contents_align = layout::Alignment::Start,
-                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                               },
-                           });
+static void TrashPackageFile(String package_path,
+                             Notifications& notifications,
+                             ThreadsafeErrorNotifications& error_notifs) {
+    ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};
+    auto const outcome = TrashFileOrDirectory(package_path, scratch_arena);
+    auto const id = HashMultiple(Array {"package-file-trash"_s, package_path});
 
-    // Fills the row's leftover width so the button keeps its hugged size on the right.
-    DoBox(builder,
-          {
-              .parent = row,
-              .text = text,
-              .wrap_width = k_wrap_to_parent,
-              .size_from_text = true,
-              .font = FontType::Body,
-          });
-
-    if (!done) return TextButton(builder, row, {.text = button_text}, id_extra);
-
-    // Same padding and text height as TextButton so the row doesn't change size when it flips to done.
-    auto const marker =
-        DoBox(builder,
-              {
-                  .parent = row,
-                  .layout {
-                      .size = {layout::k_hug_contents, layout::k_hug_contents},
-                      .contents_padding = {.lr = k_button_padding_x, .tb = k_button_padding_y},
-                      .contents_gap = k_small_gap,
-                      .contents_direction = layout::Direction::Row,
-                      .contents_align = layout::Alignment::Start,
-                      .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                  },
-              });
-    DoBox(builder,
-          {
-              .parent = marker,
-              .text = ICON_FA_CHECK,
-              .size_from_text = true,
-              .font = FontType::Icons,
-              .text_colours = Col {.c = Col::Green},
-          });
-    DoBox(builder,
-          {
-              .parent = marker,
-              .text = done_text,
-              .size_from_text = true,
-              .font = FontType::Body,
-              .text_colours = Col {.c = Col::Subtext0},
-              .layout {.size = {layout::k_hug_contents, k_font_body_size}},
-          });
-
-    return false;
+    if (outcome.HasValue()) {
+        error_notifs.RemoveError(id);
+        notifications.AddOrUpdate(
+            id,
+            [f = DynamicArrayBounded<char, 200>(path::Filename(package_path))](ArenaAllocator&) {
+                return NotificationDisplayInfo {
+                    .title = "Package File Sent to " TRASH_NAME,
+                    .message = f,
+                    .dismissable = true,
+                    .icon = NotificationDisplayInfo::IconType::Success,
+                };
+            });
+    } else if (auto item = error_notifs.BeginWriteError(id)) {
+        DEFER { error_notifs.EndWriteError(*item); };
+        item->title = "Failed to send package file to " TRASH_NAME ""_s;
+        item->error_code = outcome.Error();
+    }
 }
 
 PUBLIC void PackageInstallSuccessPanel(GuiBuilder& builder,
@@ -516,6 +482,13 @@ PUBLIC void PackageInstallSuccessPanel(GuiBuilder& builder,
                                        Notifications& notifications,
                                        ThreadsafeErrorNotifications& error_notifs) {
     auto& record = panel_state.successful_installs[0];
+
+    auto const anything_installed = ({
+        bool result = false;
+        for (auto const& c : record.components)
+            if (c.installed) result = true;
+        result;
+    });
 
     auto const root = DoBox(builder,
                             {
@@ -528,129 +501,155 @@ PUBLIC void PackageInstallSuccessPanel(GuiBuilder& builder,
                                 },
                             });
 
-    auto const title_row = DoBox(builder,
-                                 {
-                                     .parent = root,
-                                     .layout {
-                                         .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                         .contents_gap = k_medium_gap,
-                                         .contents_direction = layout::Direction::Row,
-                                         .contents_align = layout::Alignment::Start,
-                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                     },
-                                 });
-    DoBox(builder,
-          {
-              .parent = title_row,
-              .text = ICON_FA_CHECK,
-              .size_from_text = true,
-              .font = FontType::Icons,
-              .text_colours = Col {.c = Col::Green},
-          });
-    DoBox(builder,
-          {
-              .parent = title_row,
-              .text = "Installation Complete",
-              .size_from_text = true,
-          });
-
-    auto const message = ({
-        String m = record.components_text;
-        if (record.num_truncated)
-            m = fmt::Format(builder.arena, "{}\n... and {} more", m, record.num_truncated);
-        if (record.license_email.size)
-            m = fmt::Format(builder.arena, "{}Licensed to: {}", m, record.license_email);
-        m;
-    });
-    DoBox(builder,
-          {
-              .parent = root,
-              .text = message,
-              .wrap_width = -1,
-              .size_from_text = true,
-              .font = FontType::Body,
-          });
-
-    if (record.default_preset_auto_loaded) {
+    // Heading: title, then the licence as a subtitle.
+    {
+        auto const heading = DoBox(builder,
+                                   {
+                                       .parent = root,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                           .contents_gap = k_medium_gap,
+                                           .contents_direction = layout::Direction::Row,
+                                           .contents_align = layout::Alignment::Start,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                       },
+                                   });
         DoBox(builder,
               {
-                  .parent = root,
-                  .text = fmt::Format(builder.arena,
-                                      "Loaded the default preset, {}.",
-                                      path::FilenameWithoutExtension(record.default_preset_path)),
-                  .wrap_width = k_wrap_to_parent,
+                  .parent = heading,
+                  .text = anything_installed ? ICON_FA_CHECK : ICON_FA_CIRCLE_INFO,
                   .size_from_text = true,
-                  .font = FontType::Body,
+                  .font = FontType::Icons,
+                  .text_colours = Col {.c = anything_installed ? Col::Green : Col::Subtext0},
               });
+        auto const heading_text = DoBox(builder,
+                                        {
+                                            .parent = heading,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_gap = k_small_gap,
+                                                .contents_direction = layout::Direction::Column,
+                                                .contents_align = layout::Alignment::Start,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                            },
+                                        });
+        DoBox(builder,
+              {
+                  .parent = heading_text,
+                  .text = anything_installed ? "Installation complete"_s : "Nothing new to install"_s,
+                  .size_from_text = true,
+              });
+        if (record.license_email.size)
+            DoBox(builder,
+                  {
+                      .parent = heading_text,
+                      .text = fmt::Format(builder.arena, "Licensed to {}", record.license_email),
+                      .wrap_width = k_wrap_to_parent,
+                      .size_from_text = true,
+                      .font = FontType::Body,
+                  });
     }
 
-    auto const optional_group = DoBox(builder,
-                                      {
-                                          .parent = root,
-                                          .layout {
-                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                              .contents_gap = k_medium_gap,
-                                              .contents_direction = layout::Direction::Column,
-                                              .contents_align = layout::Alignment::Start,
-                                              .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                          },
-                                      });
-    DoBox(builder,
-          {
-              .parent = optional_group,
-              .text = "Optional",
-              .size_from_text = true,
-              .font = FontType::Body,
-              .text_colours = Col {.c = Col::Subtext0},
-          });
-
-    if (ActionRow(builder,
-                  optional_group,
-                  fmt::Format(builder.arena,
-                              "The package file \"{}\" is no longer needed.",
-                              path::Filename(record.package_path)),
-                  "Send to " TRASH_NAME,
-                  "Sent to " TRASH_NAME,
-                  record.package_file_trashed,
-                  0)) {
-        ArenaAllocatorWithInlineStorage<Kb(1)> scratch_arena {Malloc::Instance()};
-        auto const outcome = TrashFileOrDirectory(record.package_path, scratch_arena);
-        auto const id = HashMultiple(Array {"package-file-trash"_s, String(record.package_path)});
-
-        if (outcome.HasValue()) {
-            error_notifs.RemoveError(id);
-            record.package_file_trashed = true;
-            notifications.AddOrUpdate(
-                id,
-                [f = DynamicArrayBounded<char, 200>(path::Filename(record.package_path))](ArenaAllocator&) {
-                    return NotificationDisplayInfo {
-                        .title = "Package File Sent to " TRASH_NAME,
-                        .message = f,
-                        .dismissable = true,
-                        .icon = NotificationDisplayInfo::IconType::Success,
-                    };
-                });
-        } else if (auto item = error_notifs.BeginWriteError(id)) {
-            DEFER { error_notifs.EndWriteError(*item); };
-            item->title = "Failed to send package file to " TRASH_NAME ""_s;
-            item->error_code = outcome.Error();
+    // What was installed: one row per component.
+    {
+        auto const list = DoBox(builder,
+                                {
+                                    .parent = root,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_gap = k_medium_gap,
+                                        .contents_direction = layout::Direction::Column,
+                                        .contents_align = layout::Alignment::Start,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                    },
+                                });
+        for (auto [index, component] : Enumerate<u64>(record.components)) {
+            auto const row = DoBox(builder,
+                                   {
+                                       .parent = list,
+                                       .id_extra = index,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                           .contents_gap = k_medium_gap,
+                                           .contents_direction = layout::Direction::Row,
+                                           .contents_align = layout::Alignment::Start,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                                       },
+                                   });
+            DoBox(builder,
+                  {
+                      .parent = row,
+                      .text = ICON_FA_CIRCLE,
+                      .font = FontType::Icons,
+                      .font_size = k_font_body_size * 0.3f,
+                      .text_colours = Col {.c = Col::Subtext0},
+                      .text_justification = TextJustification::Centred,
+                      .layout {.size = k_icon_button_size},
+                  });
+            // Fills the row's leftover width so the result stays on the right.
+            DoBox(builder,
+                  {
+                      .parent = row,
+                      .text = component.name,
+                      .wrap_width = k_wrap_to_parent,
+                      .size_from_text = true,
+                      .font = FontType::Body,
+                  });
+            DoBox(builder,
+                  {
+                      .parent = row,
+                      .text = ({
+                          auto action = builder.arena.Clone(component.action_taken);
+                          if (action.size) action[0] = ToUppercaseAscii(action[0]);
+                          String {action};
+                      }),
+                      .size_from_text = true,
+                      .font = FontType::Body,
+                      .text_colours = Col {.c = component.installed ? Col::Green : Col::Subtext0},
+                  });
         }
+        if (record.num_truncated)
+            DoBox(builder,
+                  {
+                      .parent = list,
+                      .text = fmt::Format(builder.arena, "... and {} more", record.num_truncated),
+                      .size_from_text = true,
+                      .font = FontType::Body,
+                      .text_colours = Col {.c = Col::Subtext0},
+                  });
     }
 
-    if (record.default_preset_path.size && !record.default_preset_auto_loaded) {
-        if (ActionRow(builder,
-                      optional_group,
-                      fmt::Format(builder.arena,
-                                  "Load {}, the preset bank's default preset. Replaces your current sound "
-                                  "(undoable).",
-                                  path::FilenameWithoutExtension(record.default_preset_path)),
-                      "Load Preset",
-                      "Loaded",
-                      record.default_preset_loaded,
-                      1)) {
-            LoadPresetFromFile(engine, record.default_preset_path);
-            record.default_preset_loaded = true;
+    DoModalDivider(builder, root, {.horizontal = true, .subtle = true});
+
+    // Actions, applied on Done.
+    {
+        auto const options = DoBox(builder,
+                                   {
+                                       .parent = root,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                           .contents_gap = k_medium_gap,
+                                           .contents_direction = layout::Direction::Column,
+                                           .contents_align = layout::Alignment::Start,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                       },
+                                   });
+        if (record.default_preset_path.size && !record.default_preset_auto_loaded) {
+            if (CheckboxButton(builder,
+                               options,
+                               fmt::Format(builder.arena,
+                                           "Load preset {}",
+                                           path::FilenameWithoutExtension(record.default_preset_path)),
+                               record.load_default_preset,
+                               "Replaces your current sound (undoable)."_s))
+                record.load_default_preset = !record.load_default_preset;
         }
+        if (CheckboxButton(builder,
+                           options,
+                           "Send package file to " TRASH_NAME ""_s,
+                           record.trash_package_file,
+                           TooltipString {String {path::Filename(record.package_path)}}))
+            record.trash_package_file = !record.trash_package_file;
     }
 
     auto const button_row = DoBox(builder,
@@ -664,8 +663,12 @@ PUBLIC void PackageInstallSuccessPanel(GuiBuilder& builder,
                                       },
                                   });
 
-    if (TextButton(builder, button_row, {.text = "Done", .is_default = true}))
+    if (TextButton(builder, button_row, {.text = "Done", .is_default = true})) {
+        if (record.load_default_preset) LoadPresetFromFile(engine, record.default_preset_path);
+        if (record.trash_package_file) TrashPackageFile(record.package_path, notifications, error_notifs);
         dyn::Remove(panel_state.successful_installs, 0);
+        builder.imgui.CloseModal(PreferencesPanelState::k_panel_id);
+    }
 }
 
 PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
@@ -687,7 +690,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                 k_installing_packages_notif_id,
                 [&package_install_jobs](ArenaAllocator& scratch_arena) -> NotificationDisplayInfo {
                     NotificationDisplayInfo c {};
-                    c.icon = NotificationDisplayInfo::IconType::Info;
+                    c.icon = NotificationDisplayInfo::IconType::Busy;
                     c.dismissable = false;
                     if (!package_install_jobs.Empty())
                         c.title = fmt::Format(
@@ -781,8 +784,33 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                     if (panel_state.successful_installs.size != panel_state.successful_installs.Capacity()) {
                         PackageInstallPanelState::SuccessfulInstall record {};
                         dyn::Assign(record.package_path, job.job->path);
-                        record.components_text = buffer;
-                        record.num_truncated = num_truncated;
+                        for (auto const& component : job.job->components) {
+                            if (record.components.size == record.components.Capacity()) {
+                                if (record.num_truncated !=
+                                    LargestRepresentableValue<decltype(record.num_truncated)>())
+                                    ++record.num_truncated;
+                                continue;
+                            }
+                            PackageInstallPanelState::SuccessfulInstall::ComponentResult result {
+                                .action_taken = package::TypeOfActionTaken(component),
+                                .installed = component.installed_path.size != 0,
+                            };
+                            switch (component.component.type) {
+                                case package::ComponentType::Library:
+                                    dyn::AssignFitInCapacity(result.name,
+                                                             fmt::Format(builder.arena,
+                                                                         "{} - Sample Library",
+                                                                         component.component.library->name));
+                                    break;
+                                case package::ComponentType::Presets:
+                                    dyn::AssignFitInCapacity(
+                                        result.name,
+                                        path::FilenameWithoutExtension(component.component.path));
+                                    break;
+                                case package::ComponentType::Count: PanicIfReached();
+                            }
+                            dyn::Append(record.components, result);
+                        }
                         dyn::AssignFitInCapacity(record.license_email, job.job->license_email);
                         dyn::Assign(record.default_preset_path, suggested_default_preset);
                         record.default_preset_auto_loaded = auto_loaded;

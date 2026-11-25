@@ -9,7 +9,7 @@
 #include "gui/core/gui_fwd.hpp"
 
 struct NotificationDisplayInfo {
-    enum class IconType : u8 { None, Info, Success, Error };
+    enum class IconType : u8 { None, Info, Success, Error, Busy };
     String title {};
     String message {};
     bool dismissable = true;

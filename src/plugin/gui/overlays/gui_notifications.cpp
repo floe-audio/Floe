@@ -74,14 +74,34 @@ void NotificationsPanel(GuiBuilder& builder, Notifications& notifications) {
                                              },
                                          });
 
-        if (config.icon != NotificationDisplayInfo::IconType::None) {
+        if (config.icon == NotificationDisplayInfo::IconType::Busy) {
+            // A slowly turning arc, so it's clear the GUI hasn't frozen during long operations.
+            auto const spinner = DoBox(builder,
+                                       {
+                                           .parent = lhs_container,
+                                           .layout {.size = k_font_icons_size},
+                                       });
+            if (auto const r = BoxRect(builder, spinner)) {
+                auto const window_rect = builder.imgui.ViewportRectToWindowRect(*r);
+                auto const angle = (f32)n.time_added.SecondsFromNow() * k_pi<f32>;
+                auto* dl = builder.imgui.draw_list;
+                dl->PathArcTo(window_rect.Centre(),
+                              window_rect.w * 0.4f,
+                              angle,
+                              angle + (k_pi<f32> * 1.5f),
+                              24);
+                dl->PathStroke(ToU32(Col {.c = Col::Subtext1}), false, 2.0f);
+            }
+            GuiIo().out.IncreaseUpdateInterval(GuiFrameOutput::UpdateInterval::Animate);
+        } else if (config.icon != NotificationDisplayInfo::IconType::None) {
             DoBox(builder,
                   {
                       .parent = lhs_container,
                       .text = ({
                           String str {};
                           switch (config.icon) {
-                              case NotificationDisplayInfo::IconType::None: PanicIfReached();
+                              case NotificationDisplayInfo::IconType::None:
+                              case NotificationDisplayInfo::IconType::Busy: PanicIfReached();
                               case NotificationDisplayInfo::IconType::Info: str = ICON_FA_INFO; break;
                               case NotificationDisplayInfo::IconType::Success: str = ICON_FA_CHECK; break;
                               case NotificationDisplayInfo::IconType::Error:
@@ -95,7 +115,8 @@ void NotificationsPanel(GuiBuilder& builder, Notifications& notifications) {
                       .text_colours = {({
                           Col::Id c {};
                           switch (config.icon) {
-                              case NotificationDisplayInfo::IconType::None: PanicIfReached();
+                              case NotificationDisplayInfo::IconType::None:
+                              case NotificationDisplayInfo::IconType::Busy: PanicIfReached();
                               case NotificationDisplayInfo::IconType::Info: c = Col::Subtext1; break;
                               case NotificationDisplayInfo::IconType::Success: c = Col::Green; break;
                               case NotificationDisplayInfo::IconType::Error: c = Col::Red; break;
