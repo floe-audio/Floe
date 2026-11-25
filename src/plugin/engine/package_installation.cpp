@@ -1058,7 +1058,7 @@ bool OnLicenseKeyReceived(InstallJob& job, ThreadPool& thread_pool) {
     if (encrypted_package::VerifyContentKey(*job.file_reader, *job.encrypted_header, payload.package_key)
             .HasError()) {
         dyn::Clear(job.error_buffer);
-        fmt::Append(job.error_buffer, "License key does not match this package");
+        fmt::Append(job.error_buffer, "This license key isn't for this package.");
         return false;
     }
 
@@ -1091,9 +1091,9 @@ u32 ApplyCombinedLicenseKeys(InstallJobs& jobs, String combined_license_text, Th
         if (!matched) {
             dyn::Clear(job.error_buffer);
             if (payloads.size == 0)
-                fmt::Append(job.error_buffer, "No valid license keys found in the file");
+                fmt::Append(job.error_buffer, "That file doesn't contain a valid license key.");
             else
-                fmt::Append(job.error_buffer, "No matching license key for this package in the file");
+                fmt::Append(job.error_buffer, "That license file isn't for this package.");
         }
     }
 

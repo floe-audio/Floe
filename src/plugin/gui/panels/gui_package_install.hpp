@@ -106,68 +106,85 @@ PUBLIC String InstallationOptionAskUserPretext(package::InstallJob::Component co
                        package::ComponentTypeString(comp.component.type));
 }
 
-// A modal-styled radio row: circular indicator + label, the whole row clickable. Returns true when clicked.
-static bool LicenseMethodRadio(GuiBuilder& builder, Box parent, String label, bool selected, u64 id_extra) {
-    auto const row = DoBox(builder,
-                           {
-                               .parent = parent,
-                               .id_extra = id_extra,
-                               .layout {
-                                   .size = {layout::k_hug_contents, layout::k_hug_contents},
-                                   .contents_gap = k_medium_gap,
-                                   .contents_direction = layout::Direction::Row,
-                                   .contents_align = layout::Alignment::Start,
-                                   .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                               },
-                               .button_behaviour = imgui::ButtonConfig {},
-                           });
-
-    auto const indicator = DoBox(builder,
-                                 {
-                                     .parent = row,
-                                     .background_fill_colours = Col {.c = Col::Background2},
-                                     .background_fill_auto_hot_active_overlay = true,
-                                     .border_colours = Col {.c = Col::Overlay0},
-                                     .border_auto_hot_active_overlay = true,
-                                     .parent_dictates_hot_and_active = true,
-                                     .round_background_corners = 0b1111,
-                                     .corner_rounding = k_icon_button_size / 2.0f,
-                                     .layout {
-                                         .size = k_icon_button_size,
-                                         .contents_align = layout::Alignment::Middle,
-                                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
-                                     },
-                                 });
-    if (selected)
-        DoBox(builder,
-              {
-                  .parent = indicator,
-                  .background_fill_colours = Col {.c = Col::Text},
-                  .parent_dictates_hot_and_active = true,
-                  .round_background_corners = 0b1111,
-                  .corner_rounding = k_icon_button_size / 4.0f,
-                  .layout {.size = k_icon_button_size / 2.0f},
-              });
-
+// Small underlined text that acts as a secondary action. Returns true when clicked.
+static bool LicenseDialogLink(GuiBuilder& builder, Box parent, String label) {
+    auto const link = DoBox(builder,
+                            {
+                                .parent = parent,
+                                .layout {
+                                    .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                },
+                                .button_behaviour = imgui::ButtonConfig {},
+                            });
     DoBox(builder,
           {
-              .parent = row,
+              .parent = link,
               .text = label,
               .size_from_text = true,
-              .text_colours = Col {.c = Col::Text},
+              .font = FontType::Body,
+              .text_colours = Colours {ColSet {
+                  .base = Col {.c = Col::Subtext1},
+                  .hot = Col {.c = Col::Text},
+                  .active = Col {.c = Col::Text},
+              }},
+              .border_colours = Colours {ColSet {
+                  .base = Col {.c = Col::Overlay1},
+                  .hot = Col {.c = Col::Subtext1},
+                  .active = Col {.c = Col::Subtext1},
+              }},
+              .parent_dictates_hot_and_active = true,
+              .border_edges = 0b0001,
           });
+    return link.button_fired;
+}
 
-    return row.button_fired;
+static bool IsAwaitingLicenseKey(package::ManagedInstallJob const& job) {
+    return job.job->state.Load(LoadMemoryOrder::Acquire) == package::InstallJob::State::AwaitingLicenseKey;
+}
+
+static void CancelJobsAwaitingLicenseKey(package::InstallJobs& package_install_jobs) {
+    for (auto& job : package_install_jobs)
+        if (IsAwaitingLicenseKey(job)) {
+            dyn::Assign(job.job->error_buffer, "Cancelled"_s);
+            job.job->state.Store(package::InstallJob::State::DoneError, StoreMemoryOrder::Release);
+        }
+}
+
+static Box LicenseDialogRow(GuiBuilder& builder, Box parent, layout::Alignment align, u64 id_extra = 0) {
+    return DoBox(builder,
+                 {
+                     .parent = parent,
+                     .id_extra = id_extra,
+                     .layout {
+                         .size = {layout::k_fill_parent, layout::k_hug_contents},
+                         .contents_gap = k_medium_gap,
+                         .contents_direction = layout::Direction::Row,
+                         .contents_align = align,
+                         .contents_cross_axis_align = layout::CrossAxisAlign::Middle,
+                     },
+                 });
+}
+
+static void LicenseDialogErrorText(GuiBuilder& builder, Box parent, String text) {
+    DoBox(builder,
+          {
+              .parent = parent,
+              .text = text,
+              .wrap_width = k_wrap_to_parent,
+              .size_from_text = true,
+              .font = FontType::Body,
+              .text_colours = Col {.c = Col::Red},
+          });
 }
 
 // Renders the per-package "paste a key" blocks. Used by the manual key entry method.
 static void PackageLicensePerProductInputs(GuiBuilder& builder,
                                            Box root,
                                            package::InstallJobs& package_install_jobs,
-                                           ThreadPool& thread_pool) {
+                                           ThreadPool& thread_pool,
+                                           bool show_package_names) {
     for (auto& job : package_install_jobs) {
-        auto const state = job.job->state.Load(LoadMemoryOrder::Acquire);
-        if (state != package::InstallJob::State::AwaitingLicenseKey) continue;
+        if (!IsAwaitingLicenseKey(job)) continue;
 
         builder.imgui.PushId((uintptr)(void*)job.job);
         DEFER { builder.imgui.PopId(); };
@@ -184,57 +201,33 @@ static void PackageLicensePerProductInputs(GuiBuilder& builder,
                                          },
                                      });
 
-        auto const desc = fmt::Format(builder.arena,
-                                      "Paste the license key for {}",
-                                      path::FilenameWithoutExtension(job.job->path));
-        DoBox(builder,
-              {
-                  .parent = container,
-                  .text = desc,
-                  .wrap_width = -1,
-                  .size_from_text = true,
-                  .font = FontType::Body,
-              });
-
-        auto const text_input = TextInput(builder,
-                                          container,
-                                          {
-                                              .text = job.job->pasted_license_text,
-                                              .size = {layout::k_fill_parent, 140.0f},
-                                              .border = true,
-                                              .background = true,
-                                              .multiline = true,
-                                          });
-        if (text_input.result && text_input.result->buffer_changed)
-            dyn::Assign(job.job->pasted_license_text, text_input.result->text);
-
-        // Show error if previous attempt failed
-        if (job.job->error_buffer.size) {
+        if (show_package_names)
             DoBox(builder,
                   {
                       .parent = container,
-                      .text = job.job->error_buffer,
+                      .text = path::FilenameWithoutExtension(job.job->path),
+                      .wrap_width = k_wrap_to_parent,
                       .size_from_text = true,
                       .font = FontType::Body,
-                      .text_colours = Col {.c = Col::Red},
+                      .text_colours = Col {.c = Col::Text},
                   });
-        }
 
-        auto const button_row = DoBox(builder,
-                                      {
-                                          .parent = container,
-                                          .layout {
-                                              .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                              .contents_gap = k_medium_gap,
-                                              .contents_direction = layout::Direction::Row,
-                                              .contents_align = layout::Alignment::End,
-                                          },
-                                      });
+        auto const text_input =
+            TextInput(builder,
+                      container,
+                      {
+                          .text = job.job->pasted_license_text,
+                          .size = {layout::k_fill_parent, show_package_names ? 70.0f : 140.0f},
+                          .border = true,
+                          .background = true,
+                          .multiline = true,
+                      });
+        if (text_input.result && text_input.result->buffer_changed)
+            dyn::Assign(job.job->pasted_license_text, text_input.result->text);
 
-        if (TextButton(builder, button_row, {.text = "Cancel"})) {
-            dyn::Assign(job.job->error_buffer, "Cancelled"_s);
-            job.job->state.Store(package::InstallJob::State::DoneError, StoreMemoryOrder::Release);
-        }
+        if (job.job->error_buffer.size) LicenseDialogErrorText(builder, container, job.job->error_buffer);
+
+        auto const button_row = LicenseDialogRow(builder, container, layout::Alignment::End);
         if (TextButton(builder, button_row, {.text = "Paste"})) {
             builder.imgui.SetTextInputFocus(text_input.box.imgui_id, job.job->pasted_license_text, true);
             GuiIo().out.wants.clipboard_text_paste = true;
@@ -242,14 +235,13 @@ static void PackageLicensePerProductInputs(GuiBuilder& builder,
         if (TextButton(builder,
                        button_row,
                        {
-                           .text = "Activate",
+                           .text = "Unlock",
                            .disabled = job.job->pasted_license_text.size == 0,
                            .is_default = true,
                        })) {
             dyn::Clear(job.job->error_buffer);
-            if (!package::OnLicenseKeyReceived(*job.job, thread_pool)) {
-                // Error is already in error_buffer, will be shown next frame
-            }
+            // On failure the reason is in error_buffer, shown next frame.
+            package::OnLicenseKeyReceived(*job.job, thread_pool);
         }
     }
 }
@@ -262,19 +254,27 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
                                      persistent_store::Store& persistent_store) {
     using Mode = PackageInstallPanelState::LicenseInputMode;
 
-    auto const num_awaiting_key = ({
-        usize n = 0;
+    auto const awaiting_jobs = ({
+        DynamicArray<package::InstallJob*> jobs {builder.arena};
         for (auto& job : package_install_jobs)
-            if (job.job->state.Load(LoadMemoryOrder::Acquire) ==
-                package::InstallJob::State::AwaitingLicenseKey)
-                ++n;
-        n;
+            if (IsAwaitingLicenseKey(job)) dyn::Append(jobs, job.job);
+        jobs.ToOwnedSpan();
     });
+    if (!awaiting_jobs.size) return;
+    auto const single_package_name = path::FilenameWithoutExtension(awaiting_jobs[0]->path);
+    auto const several = awaiting_jobs.size > 1;
+
+    // A failure from one method means nothing in the other.
+    auto const switch_mode = [&](Mode mode) {
+        panel_state.license_input_mode = mode;
+        for (auto job : awaiting_jobs)
+            dyn::Clear(job->error_buffer);
+    };
 
     auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                    .size = {500, layout::k_hug_contents},
                                     .contents_padding = {.lrtb = k_default_spacing},
                                     .contents_gap = k_default_spacing,
                                     .contents_direction = layout::Direction::Column,
@@ -282,96 +282,190 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
                                 },
                             });
 
-    DoBox(builder,
-          {
-              .parent = root,
-              .text = "License Key Required",
-              .size_from_text = true,
-          });
-
-    auto const radio_group = DoBox(builder,
+    // Heading: lock icon, title, then a subtitle.
+    {
+        auto const heading = DoBox(builder,
                                    {
                                        .parent = root,
                                        .layout {
                                            .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                           .contents_gap = k_small_gap,
-                                           .contents_direction = layout::Direction::Column,
+                                           .contents_gap = k_medium_gap,
+                                           .contents_direction = layout::Direction::Row,
                                            .contents_align = layout::Alignment::Start,
                                            .contents_cross_axis_align = layout::CrossAxisAlign::Start,
                                        },
                                    });
-    if (LicenseMethodRadio(builder,
-                           radio_group,
-                           "Load a license file",
-                           panel_state.license_input_mode == Mode::AllKeysAtOnce,
-                           0))
-        panel_state.license_input_mode = Mode::AllKeysAtOnce;
-    if (LicenseMethodRadio(builder,
-                           radio_group,
-                           num_awaiting_key > 1 ? "Enter each key manually"_s : "Enter the key manually"_s,
-                           panel_state.license_input_mode == Mode::PerProduct,
-                           1))
-        panel_state.license_input_mode = Mode::PerProduct;
+        DoBox(builder,
+              {
+                  .parent = heading,
+                  .text = ICON_FA_LOCK,
+                  .size_from_text = true,
+                  .font = FontType::Icons,
+                  .text_colours = Col {.c = Col::Highlight600},
+              });
+        auto const heading_text = DoBox(builder,
+                                        {
+                                            .parent = heading,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_gap = k_small_gap,
+                                                .contents_direction = layout::Direction::Column,
+                                                .contents_align = layout::Alignment::Start,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                            },
+                                        });
+
+        auto const subject = several ? String {fmt::Format(builder.arena, "{} packages", awaiting_jobs.size)}
+                                     : single_package_name;
+        DoBox(builder,
+              {
+                  .parent = heading_text,
+                  .text = ({
+                      String title {};
+                      switch (panel_state.license_input_mode) {
+                          case Mode::AllKeysAtOnce:
+                              title =
+                                  fmt::Format(builder.arena, "Load your license file to install {}", subject);
+                              break;
+                          case Mode::PerProduct:
+                              title = fmt::Format(builder.arena,
+                                                  "Paste {} to install {}",
+                                                  several ? "your license keys"_s : "your license key"_s,
+                                                  subject);
+                              break;
+                      }
+                      title;
+                  }),
+                  .wrap_width = k_wrap_to_parent,
+                  .size_from_text = true,
+              });
+
+        switch (panel_state.license_input_mode) {
+            case Mode::AllKeysAtOnce:
+                if (several)
+                    DoBox(builder,
+                          {
+                              .parent = heading_text,
+                              .text = "One license file unlocks them all."_s,
+                              .wrap_width = k_wrap_to_parent,
+                              .size_from_text = true,
+                              .font = FontType::Body,
+                          });
+                break;
+            case Mode::PerProduct: break;
+        }
+    }
 
     switch (panel_state.license_input_mode) {
         case Mode::AllKeysAtOnce: {
-            DoBox(
-                builder,
-                {
-                    .parent = root,
-                    .text = num_awaiting_key > 1
-                                ? "Unlock your packages using your license key file. One file unlocks all."_s
-                                : "Unlock your package using your license key file."_s,
-                    .wrap_width = -1,
-                    .size_from_text = true,
-                    .font = FontType::Body,
-                });
-
-            for (auto& job : package_install_jobs) {
-                if (job.job->state.Load(LoadMemoryOrder::Acquire) !=
-                    package::InstallJob::State::AwaitingLicenseKey)
-                    continue;
-                if (!job.job->error_buffer.size) continue;
-                DoBox(builder,
-                      {
-                          .parent = root,
-                          .text = fmt::Format(builder.arena,
-                                              "{}: {}",
-                                              path::FilenameWithoutExtension(job.job->path),
-                                              job.job->error_buffer),
-                          .wrap_width = -1,
-                          .size_from_text = true,
-                          .font = FontType::Body,
-                          .text_colours = Col {.c = Col::Red},
-                      });
-            }
-
-            auto const button_row = DoBox(builder,
-                                          {
-                                              .parent = root,
-                                              .layout {
-                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                  .contents_gap = k_medium_gap,
-                                                  .contents_direction = layout::Direction::Row,
-                                                  .contents_align = layout::Alignment::End,
-                                              },
-                                          });
-            if (TextButton(builder, button_row, {.text = "Cancel"})) {
-                for (auto& job : package_install_jobs)
-                    if (job.job->state.Load(LoadMemoryOrder::Acquire) ==
-                        package::InstallJob::State::AwaitingLicenseKey) {
-                        dyn::Assign(job.job->error_buffer, "Cancelled"_s);
-                        job.job->state.Store(package::InstallJob::State::DoneError,
-                                             StoreMemoryOrder::Release);
+            if (several) {
+                auto const list = DoBox(builder,
+                                        {
+                                            .parent = root,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_gap = k_small_gap,
+                                                .contents_direction = layout::Direction::Column,
+                                                .contents_align = layout::Alignment::Start,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                            },
+                                        });
+                constexpr usize k_max_listed = 8;
+                for (auto [index, job] : Enumerate<u64>(awaiting_jobs)) {
+                    if (index == k_max_listed) {
+                        DoBox(builder,
+                              {
+                                  .parent = list,
+                                  .text = fmt::Format(builder.arena,
+                                                      "... and {} more",
+                                                      awaiting_jobs.size - k_max_listed),
+                                  .size_from_text = true,
+                                  .font = FontType::Body,
+                                  .text_colours = Col {.c = Col::Subtext0},
+                              });
+                        break;
                     }
+                    auto const row = LicenseDialogRow(builder, list, layout::Alignment::Start, index);
+                    DoBox(builder,
+                          {
+                              .parent = row,
+                              .text = ICON_FA_CIRCLE,
+                              .font = FontType::Icons,
+                              .font_size = k_font_body_size * 0.3f,
+                              .text_colours = Col {.c = Col::Subtext0},
+                              .text_justification = TextJustification::Centred,
+                              .layout {.size = k_icon_button_size},
+                          });
+                    DoBox(builder,
+                          {
+                              .parent = row,
+                              .text = path::FilenameWithoutExtension(job->path),
+                              .wrap_width = k_wrap_to_parent,
+                              .size_from_text = true,
+                              .font = FontType::Body,
+                          });
+                }
             }
-            if (TextButton(builder, button_row, {.text = "Load license file…", .is_default = true}))
+
+            // Usually every package fails for the same reason, so only name packages when they differ.
+            auto const any_error = ({
+                bool result = false;
+                for (auto const job : awaiting_jobs)
+                    if (job->error_buffer.size) result = true;
+                result;
+            });
+            if (any_error) {
+                auto const all_errors_same = ({
+                    bool result = true;
+                    for (auto const job : awaiting_jobs)
+                        if (job->error_buffer != awaiting_jobs[0]->error_buffer) result = false;
+                    result;
+                });
+                if (all_errors_same)
+                    LicenseDialogErrorText(builder, root, awaiting_jobs[0]->error_buffer);
+                else
+                    for (auto const job : awaiting_jobs)
+                        if (job->error_buffer.size)
+                            LicenseDialogErrorText(builder,
+                                                   root,
+                                                   fmt::Format(builder.arena,
+                                                               "{}: {}",
+                                                               path::FilenameWithoutExtension(job->path),
+                                                               job->error_buffer));
+            }
+
+            DoModalDivider(builder, root, {.horizontal = true, .subtle = true});
+
+            auto const button_row = LicenseDialogRow(builder, root, layout::Alignment::Start);
+            if (LicenseDialogLink(builder,
+                                  button_row,
+                                  several ? "Paste keys instead"_s : "Paste a key instead"_s))
+                switch_mode(Mode::PerProduct);
+            DoBox(builder, {.parent = button_row, .layout {.size = {layout::k_fill_parent, 1}}});
+            if (TextButton(builder, button_row, {.text = "Cancel"}))
+                CancelJobsAwaitingLicenseKey(package_install_jobs);
+            if (TextButton(builder,
+                           button_row,
+                           {
+                               .text = any_error ? "Choose another file…"_s : "Load license file…"_s,
+                               .is_default = true,
+                           }))
                 OpenFilePickerLoadLicenseFile(file_picker_state, persistent_store);
             break;
         }
-        case Mode::PerProduct:
-            PackageLicensePerProductInputs(builder, root, package_install_jobs, thread_pool);
+        case Mode::PerProduct: {
+            PackageLicensePerProductInputs(builder, root, package_install_jobs, thread_pool, several);
+
+            DoModalDivider(builder, root, {.horizontal = true, .subtle = true});
+
+            auto const button_row = LicenseDialogRow(builder, root, layout::Alignment::Start);
+            if (LicenseDialogLink(builder, button_row, "Use a license file instead"_s))
+                switch_mode(Mode::AllKeysAtOnce);
+            DoBox(builder, {.parent = button_row, .layout {.size = {layout::k_fill_parent, 1}}});
+            if (TextButton(builder, button_row, {.text = "Cancel"}))
+                CancelJobsAwaitingLicenseKey(package_install_jobs);
             break;
+        }
     }
 }
 
@@ -888,11 +982,13 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                                                file_picker_state,
                                                                persistent_store);
                                   },
-                              .bounds = CentredModalRect(f32x2 {500, 400}),
+                              .bounds = Rect {},
                               .imgui_id = builder.imgui.MakeId("license input"),
                               .viewport_config = ({
                                   auto cfg = k_default_modal_viewport;
                                   cfg.mode = imgui::ViewportMode::Floating;
+                                  cfg.positioning = imgui::ViewportPositioning::WindowCentred;
+                                  cfg.auto_size = true;
                                   cfg.exclusive_focus = true;
                                   cfg.z_order = 200;
                                   cfg;
