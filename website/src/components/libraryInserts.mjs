@@ -17,6 +17,9 @@ export const k_library_insert_slots = [
     'arp-record-example',
     // Folders: how to recognise the library's and its presets' folders
     'folder-names',
+    // Install Packages and the Quick Start Guide, before the install steps: a link to the library
+    // developer's own installation guide. Shows nothing by default.
+    'install-guide',
     // Install Packages and the Quick Start Guide, download step: where to download the library's files from
     'package-download',
     // System Requirements, after Floe's requirements: what the library itself needs, such as disk space

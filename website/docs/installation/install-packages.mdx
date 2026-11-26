@@ -20,6 +20,8 @@ import ManualOnly from '@site/src/components/ManualOnly';
 
 <ManualExclude types={['library']}>Sample libraries and presets come to you in _packages_. Download your package file, then present it to Floe via its _Install package_ button.</ManualExclude><ManualOnly types={['library']}>You install <LibraryName /> from inside Floe: download its package file, then give it to Floe with the _Install package_ button.</ManualOnly>
 
+<LibraryInsert slot="install-guide" />
+
 1. <LibraryInsert slot="package-download"><ManualExclude types={['library']}>**Download your package(s)** — files ending `.floe-pkg` or `.floe-pkg-enc`.</ManualExclude><ManualOnly types={['library']}>**Download the <LibraryName /> package** — a file ending `.floe-pkg-enc` — along with your `.floe-license` file.</ManualOnly></LibraryInsert>
 1. **Open Floe** in your DAW. If you haven't installed it yet, see [Install Floe](./download-and-install-floe).
 1. **Open <FAIcon icon="fa-solid fa-cog" /> Preferences** from the top panel, and choose the _Packages_ tab.
