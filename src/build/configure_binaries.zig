@@ -448,8 +448,6 @@ pub fn addConfiguredPlugin(
                             \\                <string>{[type]s}</string>
                             \\                <key>version</key>
                             \\                <integer>{[version_packed]d}</integer>
-                            \\                <key>sandboxSafe</key>
-                            \\                <true/>
                             \\                <key>resourceUsage</key>
                             \\                <dict>
                             \\                    <key>network.client</key>
