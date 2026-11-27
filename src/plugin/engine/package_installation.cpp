@@ -555,7 +555,7 @@ static String MacosFileLocationCategory(String path) {
     return "home-other"_s;
 }
 
-static void HandleMacosPackageFileOpenError(InstallJob& job, ErrorCode error) {
+[[maybe_unused]] static void HandleMacosPackageFileOpenError(InstallJob& job, ErrorCode error) {
     String cause {};
     if (error == FilesystemError::NotPermittedBySystem) {
         cause = "EPERM"_s;
