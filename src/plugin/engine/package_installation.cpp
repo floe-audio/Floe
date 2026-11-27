@@ -27,6 +27,7 @@ CustomValueToString(Writer writer, package::InstallJob::State state, FormatOptio
         case package::InstallJob::State::AwaitingLicenseKey: s = "AwaitingLicenseKey"; break;
         case package::InstallJob::State::DoneSuccess: s = "DoneSuccess"; break;
         case package::InstallJob::State::DoneError: s = "DoneError"; break;
+        case package::InstallJob::State::DoneCancelled: s = "DoneCancelled"; break;
     }
     return ValueToString(writer, s, o);
 }
@@ -1271,7 +1272,8 @@ void AddJob(InstallJobs& jobs,
 InstallJobs::Iterator RemoveJob(InstallJobs& jobs, InstallJobs::Iterator it) {
     ASSERT(g_is_logical_main_thread);
     auto const state = it->job->state.Load(LoadMemoryOrder::Acquire);
-    ASSERT(state == InstallJob::State::DoneError || state == InstallJob::State::DoneSuccess);
+    ASSERT(state == InstallJob::State::DoneError || state == InstallJob::State::DoneSuccess ||
+           state == InstallJob::State::DoneCancelled);
 
     return jobs.Remove(it);
 }

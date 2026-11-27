@@ -55,6 +55,7 @@ struct InstallJob {
         AwaitingLicenseKey, // worker thread is not running, license key paste needed
         DoneSuccess, // worker thread is not running, packages install completed
         DoneError, // worker thread is not running, packages install failed
+        DoneCancelled, // worker thread is not running, the user chose not to install
     };
 
     enum class UserDecision : u8 {

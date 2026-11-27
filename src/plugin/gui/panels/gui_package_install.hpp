@@ -121,10 +121,8 @@ static bool IsAwaitingLicenseKey(package::ManagedInstallJob const& job) {
 
 static void CancelJobsAwaitingLicenseKey(package::InstallJobs& package_install_jobs) {
     for (auto& job : package_install_jobs)
-        if (IsAwaitingLicenseKey(job)) {
-            dyn::Assign(job.job->error_buffer, "Cancelled"_s);
-            job.job->state.Store(package::InstallJob::State::DoneError, StoreMemoryOrder::Release);
-        }
+        if (IsAwaitingLicenseKey(job))
+            job.job->state.Store(package::InstallJob::State::DoneCancelled, StoreMemoryOrder::Release);
 }
 
 static Box LicenseDialogRow(GuiBuilder& builder, Box parent, layout::Alignment align, u64 id_extra = 0) {
@@ -675,12 +673,10 @@ PackageInstallConflictPanel(GuiBuilder& builder, package::InstallJob& job, Threa
                                           .contents_align = layout::Alignment::End,
                                       },
                                   });
-    if (TextButton(builder, button_row, {.text = "Cancel"})) {
-        dyn::Assign(job.error_buffer, "Cancelled"_s);
-        job.state.Store(package::InstallJob::State::DoneError, StoreMemoryOrder::Release);
-    } else if (TextButton(builder, button_row, {.text = "Continue", .is_default = true})) {
+    if (TextButton(builder, button_row, {.text = "Cancel"}))
+        job.state.Store(package::InstallJob::State::DoneCancelled, StoreMemoryOrder::Release);
+    else if (TextButton(builder, button_row, {.text = "Continue", .is_default = true}))
         package::OnAllUserInputReceived(job, thread_pool);
-    }
 }
 
 static void TrashPackageFile(String package_path,
@@ -963,6 +959,12 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                     job.job->error_buffer);
                     }
 
+                    next = package::RemoveJob(package_install_jobs, it);
+                    break;
+                }
+
+                case package::InstallJob::State::DoneCancelled: {
+                    error_notifs.RemoveError(job_id);
                     next = package::RemoveJob(package_install_jobs, it);
                     break;
                 }
