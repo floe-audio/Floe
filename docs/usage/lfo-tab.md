@@ -1,0 +1,19 @@
+# LFO Tab
+
+> Add movement to a layer by modulating its volume, filter, pan, pitch or grain position
+
+Use the LFO (low frequency oscillator) to add movement to the sound, modulating one of the layer's controls such as its volume or filter cutoff.
+
+![A layer's LFO tab with its parts numbered](https://assets.floe.audio/website/screenshots/layer-lfo.dee1730f34b4599a.png)1234
+
+1.  **On/off** — switch the LFO on or off. A dot on the _LFO_ tab shows that it's on.
+2.  **LFO display** — a live preview of the LFO's shape and speed. Drag it left and right to change _Time_, and up and down to change _Amount_.
+3.  **Target, Shape and Mode**:
+    -   **Target** — what the LFO moves: _Volume_, _Filter_, _Pan_, _Pitch_ or _Grain Position_. The movement happens around the target's current setting. Some targets need their feature switched on first: for example, the filter must be on for the _Filter_ target, and the play mode must be _Granular Fixed_ for _Grain Position_.
+    -   **Shape** — the LFO's waveform. Alongside the classic shapes there are random and plucky ones.
+    -   **Variation** — appears when a random shape (_Random Steps_ or _Random Glide_) is selected. It allows you to remove the element of chance from random movement. _Different on every note_ gives each note a fresh random pattern. _Identical on all notes_ plays exactly the same pattern every time, chosen by the **Seed** number: try a few until you find a movement you like. It's saved with the preset, so everyone hears the same movement. _Identical on each key_ gives each key its own repeatable pattern. In _Free_ mode, a note that joins already-sounding notes follows their pattern. The Seed works because the random steps follow a sequence of numbers that only looks random: the Seed is where that sequence starts. Learn more about seeds and reproducibility on the [Reproducibility](/docs/usage/reproducibility) page.
+    -   **Mode** — with _Retrigger_, every note starts the LFO from the beginning of its cycle. With _Free_, a new note joins in wherever the layer's sounding notes have reached, so all the notes move together.
+4.  **Amount and Time**:
+    -   **Amount** — how far the LFO moves its target. Negative values flip the shape upside down. If MPE press or slide is routed to the LFO amount (see the [CONFIG tab](/docs/usage/config-tab)), red marks show each voice's current amount.
+    -   **Time** — how long each cycle lasts. With _Sync_ on, it's a note length at your DAW's tempo, such as 1/4; a D means dotted and a T means triplet. With _Sync_ off, it's a speed in Hz.
+    -   **Sync** — tie the LFO to your DAW's tempo. Both the synced and free _Time_ settings are remembered, so you can switch between them without losing either.

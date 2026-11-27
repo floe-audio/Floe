@@ -1,0 +1,93 @@
+# Macros
+
+> Shape a sound with knobs that move several controls at once, and make your own
+
+A macro is a knob that moves other controls for you. Floe has four of them, and each can be linked to up to six controls anywhere in Floe, each by its own amount.
+
+![The four macro knobs in the bottom panel, each named for what it does in the preset](https://assets.floe.audio/website/screenshots/macros-play.33614f920333aa4e.png)
+
+Preset authors use macros in two main ways. Sometimes a macro simply brings forward one control that matters a lot for this particular sound, tuned to a useful range, so you don't have to go looking for it. Other times it moves several controls together to create something that feels like a brand-new control made for the preset. A macro called _Surge_ might push up a distortion's drive, open a low-pass filter and thicken a granular texture, all with one turn.
+
+Each macro has a name, chosen by whoever made the preset, that hints at what it does. Not every preset uses all four.
+
+## Playing with macros
+
+The macro knobs appear on the [_Perform_](/docs/usage/perform) page, and on the _PLAY_ tab of the bottom panel when you're on the [_Layers_](/docs/usage/layers) or [_Effects_](/docs/usage/effects) page. They're the same four knobs in both places. A greyed-out macro isn't linked to anything, so it does nothing.
+
+Your MIDI keyboard's mod wheel is linked to the first macro, so you can shape the sound as you play. You can change this, and link the other macros to knobs or faders on your controller, in the [Performance Controls](/docs/usage/performance-controls) panel. Macros are also handy for automation in your DAW: one lane can move several controls at once.
+
+When a macro moves a knob, the knob's coloured arc separates from its dial. The dial shows the knob's own setting; the arc shows the value you actually hear. See [Controls](/docs/usage/controls).
+
+## Making your own macros
+
+Macros aren't only for preset authors. Once you're comfortable designing your own sounds, a macro or two can give your own presets a few expressive controls that shape the sound exactly the way you want, ready for your MIDI controller or DAW automation. The first macro is a good one to start with, since your mod wheel already moves it.
+
+To set up macros, go to the _Layers_ or _Effects_ page and click the _MACROS_ tab on the left of the bottom panel. Each macro's knob is shown alongside its settings.
+
+![The MACROS tab of the bottom panel, showing the first macro with its parts numbered](https://assets.floe.audio/website/screenshots/macros.dda7e4e0ecfb2b8a.png)123
+
+1.  **Destination knobs** — one blue knob for each control the macro is linked to, setting how far the macro moves it.
+2.  **Add destination** — link another control to the macro.
+3.  **Name** — click to rename the macro.
+
+_Linking controls, setting their amounts, and renaming a macro_
+
+### Linking a control
+
+1.  **Click** next to the macro (2). Every control you can link to gets a blue plus icon of its own, across the whole window.
+2.  **Hover** over one of them. A line joins it to the macro, with a note of what's about to be connected.
+3.  **Click** to make the link. A new blue destination knob (1) appears next to the macro. To cancel instead, press `escape` or click somewhere empty.
+
+You can link knobs, sliders and number fields. You can also link the handles you drag around, such as the points on the envelopes and the EQ graph, or the loop points on the waveform.
+
+### Setting the amount
+
+There are two kinds of knob here, and they do different jobs. The macro knob is the one you play: turning it moves every control linked to it at once. Each blue destination knob (1) is one you set and then leave alone: it decides how far the macro moves its one control, anywhere from a subtle nudge to a sweep across the control's whole range. A new link starts at zero, so the macro does nothing to that control until you change it.
+
+The easiest way to set it is to turn the macro all the way up, then drag the destination knob while you play. Watch the linked control's coloured arc move, and listen until it sounds right.
+
+-   **Right of centre** — the control goes up as the macro goes up.
+-   **Left of centre** — the control goes down as the macro goes up.
+
+The destination knob isn't linear: more of its travel is given to small amounts, so they're easier to set precisely.
+
+Hover over a destination knob to see what it's linked to. It also shows the control's value right now, and what it will be with the macro at 0% and at 100%. Rest the cursor there for a moment and Floe draws a line to the linked control, scrolling it into view if needed.
+
+Double-click a destination knob to type an amount, or right-click it for more options: copy and paste the amount between destinations, type a value, reset it to zero, invert it, or edit its range.
+
+### Editing the range
+
+Instead of setting an amount, you can set the two values the control moves between, in the control's own units: a filter sweeping from 200 Hz to 2 kHz, say. Right-click a destination knob and choose _Edit Range…_. The popup has two knobs:
+
+-   **Macro at 0%** — the control's value when the macro is fully down.
+-   **Macro at 100%** — the control's value when the macro is fully up.
+
+Each knob changes only its own end, so you can raise the bottom of a filter sweep without changing where it ends up. While you hold either knob, you hear the sound as it would be with the macro at that end, though the macro itself doesn't move. Play some notes as you drag to find exactly the right values.
+
+Changing an end also changes what you hear with the macro where it is now. To keep the current sound, tick _Move (macro name) to keep this value_: Floe moves the macro to whichever position gives the control the value it has now. Everything else the macro controls moves with it.
+
+### How a macro moves a control
+
+A macro moves a control relative to the control's own setting. With the macro at 0%, the control is exactly where you set it, and turning the macro up adds the amount on top. So adjusting the control itself shifts the whole sweep up or down.
+
+If more than one macro is linked to the same control, their movements add together. A control can never go beyond its normal range, however far the macros push it.
+
+### Removing a link
+
+Hover over a destination knob and a red appears beneath it. Click it to remove the link. The control keeps its own setting; it just stops following the macro.
+
+### Naming macros
+
+Click the name (3) and type a new one. Choose a name that says what the macro does to the sound, such as _Brightness_ or _Swell_. The name is saved with the preset and labels the macro knob everywhere it appears.
+
+### Copying, swapping and resetting
+
+Right-click a macro knob for these options, alongside the usual ones for any knob:
+
+-   **Copy Macro** and **Paste Macro** — copy a macro's value, name and links onto another macro.
+-   **Swap with Left** and **Swap with Right** — exchange the macro with its neighbour, along with its value, name and links. This doesn't move MIDI CC assignments or DAW automation, though.
+-   **Reset Macro to Default** — start the macro afresh, with no links and its original name. The next option resets it to how it was in the loaded preset instead.
+
+### Legacy destinations
+
+A yellow on a destination knob means it's linked to a [legacy parameter](/docs/reference/legacy-parameters). These are kept so older DAW projects still work, and you'll only hear the macro move it while the legacy override is active. Legacy destinations can't use _Edit Range…_.

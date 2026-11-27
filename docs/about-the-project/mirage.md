@@ -1,0 +1,15 @@
+# Mirage Compatibility
+
+> Floe is the successor to FrozenPlain's Mirage, with full backwards compatibility
+
+Floe includes full compatibility with Mirage, a sample library platform developed by FrozenPlain from 2018 to 2024. Floe evolved from this foundation - expanding into open-source development and broader platform compatibility.
+
+## Technical Details
+
+Mirage libraries use a custom `.mdata` binary format for storing samples and metadata. The **Mirage Compatibility package** provides additional assets such as images and audio files that were previously embedded within Mirage but are handled separately in Floe. This package is automatically included with FrozenPlain's Mirage-format products, but you can also [download Mirage Compatibility](/packages/mirage-compatibility) separately.
+
+Floe automatically detects existing Mirage installations and loads libraries without requiring conversion or re-installation. Both Mirage and Floe can coexist on the same system without conflicts.
+
+If Floe didn't automatically find your Mirage libraries/presets, try Floe's "Add Mirage Folders" function found in Floe's menu in the top panel.
+
+For more information about FrozenPlain's transition from Mirage to Floe, including product catalogue details and customer migration guidance, see [FrozenPlain's transition page](https://www.frozenplain.com/support/mirage/mirage-floe-transition).
