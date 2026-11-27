@@ -46,64 +46,41 @@ struct PackageInstallPanelState {
     DynamicArrayBounded<SuccessfulInstall, 16> successful_installs {};
 };
 
-PUBLIC String InstallationOptionAskUserPretext(package::InstallJob::Component const& comp,
-                                               ArenaAllocator& arena) {
-    auto const status = comp.existing_installation_status;
+static String ComponentDisplayName(package::InstallJob::Component const& component, ArenaAllocator& arena) {
+    switch (component.component.type) {
+        case package::ComponentType::Library:
+            return fmt::Format(arena, "{} - Sample Library", component.component.library->name);
+        case package::ComponentType::Presets: return path::FilenameWithoutExtension(component.component.path);
+        case package::ComponentType::Count: break;
+    }
+    PanicIfReached();
+}
+
+PUBLIC String ExistingInstallationSentence(package::ExistingInstalledComponent status,
+                                           ArenaAllocator& arena) {
     ASSERT(package::UserInputIsRequired(status));
 
-    String format {};
-    if (status.modified_since_installed == package::ModifiedSinceInstalled::Modified) {
-        switch (status.version_difference) {
-            case package::VersionDifference::InstalledIsNewer:
-                format =
-                    "A newer version of {} {} is already installed but its files have been modified since it was installed.";
-                break;
-            case package::VersionDifference::InstalledIsOlder:
-                format =
-                    "An older version of {} {} is already installed but its files have been modified since it was installed.";
-                break;
-            case package::VersionDifference::Equal:
-                format =
-                    "{} {} is already installed but its files have been modified since it was installed.";
-                break;
-            case package::VersionDifference::Count: PanicIfReached();
-        }
-    } else if (status.modified_since_installed == package::ModifiedSinceInstalled::UnmodifiedButFilesAdded) {
-        switch (status.version_difference) {
-            case package::VersionDifference::InstalledIsNewer:
-                format =
-                    "A newer version of {} {} is already fully installed but unrelated files have been added to the folder since it was installed.";
-                break;
-            case package::VersionDifference::InstalledIsOlder:
-                format =
-                    "An older version of {} {} is already fully installed but unrelated files have been added to the folder since it was installed.";
-                break;
-            case package::VersionDifference::Equal:
-                format =
-                    "{} {} is already fully installed but unrelated files have been added to the folder since it was installed.";
-                break;
-            case package::VersionDifference::Count: PanicIfReached();
-        }
-
-    } else {
-        // We don't know if the package has been modified or not so we just ask the user what to do without
-        // any explanation.
-        switch (status.version_difference) {
-            case package::VersionDifference::InstalledIsNewer:
-                format = "A newer version of {} {} is already installed.";
-                break;
-            case package::VersionDifference::InstalledIsOlder:
-                format = "An older version of {} {} is already installed.";
-                break;
-            case package::VersionDifference::Equal: format = "{} {} is already installed."; break;
-            case package::VersionDifference::Count: PanicIfReached();
-        }
+    String version {};
+    switch (status.version_difference) {
+        case package::VersionDifference::InstalledIsNewer: version = "A newer version"; break;
+        case package::VersionDifference::InstalledIsOlder: version = "An older version"; break;
+        case package::VersionDifference::Equal: version = "The same version"; break;
+        case package::VersionDifference::Count: PanicIfReached();
     }
 
-    return fmt::Format(arena,
-                       format,
-                       path::Filename(comp.component.path),
-                       package::ComponentTypeString(comp.component.type));
+    String changes {};
+    switch (status.modified_since_installed) {
+        case package::ModifiedSinceInstalled::Modified: changes = ", and its files have been changed"; break;
+        case package::ModifiedSinceInstalled::UnmodifiedButFilesAdded:
+            changes = ", and files have been added to its folder";
+            break;
+        // We can't tell whether it has been changed.
+        case package::ModifiedSinceInstalled::MaybeModified: break;
+        case package::ModifiedSinceInstalled::Unmodified:
+        case package::ModifiedSinceInstalled::Count: PanicIfReached();
+    }
+
+    return fmt::Format(arena, "{} is installed{}.", version, changes);
 }
 
 // Small underlined text that acts as a secondary action. Returns true when clicked.
@@ -469,11 +446,106 @@ PUBLIC void PackageLicenseInputPanel(GuiBuilder& builder,
     }
 }
 
-PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs& package_install_jobs) {
+// One choice per segment, the selected one raised. Sets the component's decision when a segment is clicked.
+static void
+UserDecisionSegmentedControl(GuiBuilder& builder, Box parent, package::InstallJob::Component& component) {
+    using Decision = package::InstallJob::UserDecision;
+
+    struct Segment {
+        String label;
+        Decision decision;
+    };
+    DynamicArrayBounded<Segment, 3> segments {};
+    if (component.install_config.allow_overwrite)
+        dyn::Append(segments,
+                    Segment {
+                        .label = component.existing_installation_status.version_difference ==
+                                         package::VersionDifference::InstalledIsOlder
+                                     ? "Update"_s
+                                     : "Replace"_s,
+                        .decision = Decision::Overwrite,
+                    });
+    dyn::Append(segments, Segment {.label = "Skip", .decision = Decision::Skip});
+    if (component.component.type == package::ComponentType::Presets)
+        dyn::Append(segments, Segment {.label = "Keep both", .decision = Decision::InstallCopy});
+
+    auto const trough = DoBox(builder,
+                              {
+                                  .parent = parent,
+                                  .background_fill_colours = Col {.c = Col::Background2},
+                                  .round_background_corners = 0b1111,
+                                  .layout {
+                                      .size = {layout::k_hug_contents, layout::k_hug_contents},
+                                      .contents_padding = {.lrtb = 2},
+                                      .contents_gap = 2,
+                                      .contents_direction = layout::Direction::Row,
+                                  },
+                              });
+
+    for (auto [segment_index, segment] : Enumerate<u64>(segments)) {
+        auto const is_selected = component.user_decision == segment.decision;
+        auto const button =
+            DoBox(builder,
+                  {
+                      .parent = trough,
+                      .id_extra = segment_index,
+                      .background_fill_colours = Col {.c = is_selected ? Col::Background0 : Col::None},
+                      .background_fill_auto_hot_active_overlay = !is_selected,
+                      .round_background_corners = 0b1111,
+                      .layout {
+                          .size = {layout::k_hug_contents, layout::k_hug_contents},
+                          .contents_padding = {.lr = 10, .tb = 3},
+                      },
+                      .button_behaviour = imgui::ButtonConfig {},
+                  });
+        DoBox(builder,
+              {
+                  .parent = button,
+                  .text = segment.label,
+                  .size_from_text = true,
+                  .font = FontType::Body,
+                  .text_colours = Col {.c = is_selected ? Col::Text : Col::Subtext1},
+              });
+        if (button.button_fired) component.user_decision = segment.decision;
+    }
+
+    DoBox(builder,
+          {
+              .parent = parent,
+              .text = ({
+                  String consequence {};
+                  switch (component.user_decision) {
+                      case Decision::Overwrite: consequence = "Yours moves to the " TRASH_NAME "."; break;
+                      case Decision::Skip: consequence = "Yours stays as it is."; break;
+                      case Decision::InstallCopy: consequence = "Installs a copy next to yours."; break;
+                      case Decision::Unknown: PanicIfReached();
+                  }
+                  consequence;
+              }),
+              .wrap_width = k_wrap_to_parent,
+              .size_from_text = true,
+              .font = FontType::Body,
+              .text_colours = Col {.c = Col::Subtext1},
+          });
+}
+
+// Asks what to do with the already-installed parts of one package.
+PUBLIC void
+PackageInstallConflictPanel(GuiBuilder& builder, package::InstallJob& job, ThreadPool& thread_pool) {
+    auto const components_to_decide = ({
+        DynamicArray<package::InstallJob::Component*> components {builder.arena};
+        for (auto& component : job.components)
+            if (package::UserInputIsRequired(component.existing_installation_status))
+                dyn::Append(components, &component);
+        components.ToOwnedSpan();
+    });
+    ASSERT(components_to_decide.size);
+    auto const several = components_to_decide.size > 1;
+
     auto const root = DoBox(builder,
                             {
                                 .layout {
-                                    .size = layout::k_fill_parent,
+                                    .size = {500, layout::k_hug_contents},
                                     .contents_padding = {.lrtb = k_default_spacing},
                                     .contents_gap = k_default_spacing,
                                     .contents_direction = layout::Direction::Column,
@@ -481,66 +553,133 @@ PUBLIC void PackageInstallAlertsPanel(GuiBuilder& builder, package::InstallJobs&
                                 },
                             });
 
-    DoBox(builder,
-          {
-              .parent = root,
-              .text = "File Conflict",
-              .size_from_text = true,
-          });
+    {
+        auto const heading = DoBox(builder,
+                                   {
+                                       .parent = root,
+                                       .layout {
+                                           .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                           .contents_gap = k_medium_gap,
+                                           .contents_direction = layout::Direction::Row,
+                                           .contents_align = layout::Alignment::Start,
+                                           .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                       },
+                                   });
+        DoBox(builder,
+              {
+                  .parent = heading,
+                  .text = ICON_FA_CIRCLE_INFO,
+                  .size_from_text = true,
+                  .font = FontType::Icons,
+                  .text_colours = Col {.c = Col::Highlight600},
+              });
+        auto const heading_text = DoBox(builder,
+                                        {
+                                            .parent = heading,
+                                            .layout {
+                                                .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                .contents_gap = k_small_gap,
+                                                .contents_direction = layout::Direction::Column,
+                                                .contents_align = layout::Alignment::Start,
+                                                .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                            },
+                                        });
+        DoBox(builder,
+              {
+                  .parent = heading_text,
+                  .text = several
+                              ? fmt::Format(builder.arena,
+                                            "Parts of {} are already installed",
+                                            path::FilenameWithoutExtension(job.path))
+                              : fmt::Format(builder.arena,
+                                            "{} is already installed",
+                                            ComponentDisplayName(*components_to_decide[0], builder.arena)),
+                  .wrap_width = k_wrap_to_parent,
+                  .size_from_text = true,
+              });
+        DoBox(builder,
+              {
+                  .parent = heading_text,
+                  .text = several
+                              ? "Choose what to do with each."_s
+                              : String {fmt::Format(builder.arena,
+                                                    "{} Choose what to do.",
+                                                    ExistingInstallationSentence(
+                                                        components_to_decide[0]->existing_installation_status,
+                                                        builder.arena))},
+                  .wrap_width = k_wrap_to_parent,
+                  .size_from_text = true,
+                  .font = FontType::Body,
+              });
+    }
 
-    for (auto& job : package_install_jobs) {
-        auto const state = job.job->state.Load(LoadMemoryOrder::Acquire);
-        if (state != package::InstallJob::State::AwaitingUserInput) continue;
+    for (auto [component_index, component] : Enumerate<u64>(components_to_decide)) {
+        auto const item = DoBox(builder,
+                                {
+                                    .parent = root,
+                                    .id_extra = component_index,
+                                    .layout {
+                                        .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                        .contents_gap = 8,
+                                        .contents_direction = layout::Direction::Column,
+                                        .contents_align = layout::Alignment::Start,
+                                        .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                    },
+                                });
 
-        for (auto& component : job.job->components) {
-            if (!package::UserInputIsRequired(component.existing_installation_status)) continue;
-
-            builder.imgui.PushId((uintptr)(void*)&component);
-            DEFER { builder.imgui.PopId(); };
-
-            auto const container = DoBox(builder,
-                                         {
-                                             .parent = root,
-                                             .layout {
-                                                 .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                 .contents_gap = k_medium_gap,
-                                                 .contents_direction = layout::Direction::Column,
-                                                 .contents_align = layout::Alignment::Start,
-                                                 .contents_cross_axis_align = layout::CrossAxisAlign::Start,
-                                             },
-                                         });
-
-            auto const text = InstallationOptionAskUserPretext(component, builder.arena);
-
+        if (several) {
+            auto const description = DoBox(builder,
+                                           {
+                                               .parent = item,
+                                               .layout {
+                                                   .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                                   .contents_gap = k_small_gap,
+                                                   .contents_direction = layout::Direction::Column,
+                                                   .contents_align = layout::Alignment::Start,
+                                                   .contents_cross_axis_align = layout::CrossAxisAlign::Start,
+                                               },
+                                           });
             DoBox(builder,
                   {
-                      .parent = container,
-                      .text = text,
-                      .wrap_width = -1,
+                      .parent = description,
+                      .text = ComponentDisplayName(*component, builder.arena),
+                      .wrap_width = k_wrap_to_parent,
                       .size_from_text = true,
                       .font = FontType::Body,
+                      .text_colours = Col {.c = Col::Text},
                   });
-
-            auto const button_row = DoBox(builder,
-                                          {
-                                              .parent = container,
-                                              .layout {
-                                                  .size = {layout::k_fill_parent, layout::k_hug_contents},
-                                                  .contents_gap = k_medium_gap,
-                                                  .contents_direction = layout::Direction::Row,
-                                                  .contents_align = layout::Alignment::Start,
-                                              },
-                                          });
-
-            if (TextButton(builder, button_row, {.text = "Skip"}))
-                component.user_decision = package::InstallJob::UserDecision::Skip;
-            if (component.install_config.allow_overwrite &&
-                TextButton(builder, button_row, {.text = "Overwrite"}))
-                component.user_decision = package::InstallJob::UserDecision::Overwrite;
-            if (component.component.type == package::ComponentType::Presets &&
-                TextButton(builder, button_row, {.text = "Keep Both"}))
-                component.user_decision = package::InstallJob::UserDecision::InstallCopy;
+            DoBox(builder,
+                  {
+                      .parent = description,
+                      .text = ExistingInstallationSentence(component->existing_installation_status,
+                                                           builder.arena),
+                      .wrap_width = k_wrap_to_parent,
+                      .size_from_text = true,
+                      .font = FontType::Body,
+                      .text_colours = Col {.c = Col::Subtext1},
+                  });
         }
+
+        UserDecisionSegmentedControl(builder, item, *component);
+    }
+
+    DoModalDivider(builder, root, {.horizontal = true, .subtle = true});
+
+    auto const button_row = DoBox(builder,
+                                  {
+                                      .parent = root,
+                                      .layout {
+                                          .size = {layout::k_fill_parent, layout::k_hug_contents},
+                                          .contents_gap = k_medium_gap,
+                                          .contents_direction = layout::Direction::Row,
+                                          .contents_align = layout::Alignment::End,
+                                      },
+                                  });
+    if (TextButton(builder, button_row, {.text = "Cancel"})) {
+        dyn::Assign(job.error_buffer, "Cancelled"_s);
+        job.state.Store(package::InstallJob::State::DoneError, StoreMemoryOrder::Release);
+    } else if (TextButton(builder, button_row, {.text = "Continue", .is_default = true})) {
+        package::OnAllUserInputReceived(job, thread_pool);
     }
 }
 
@@ -777,7 +916,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
     auto& error_notifs = engine.error_notifications;
 
     constexpr u64 k_installing_packages_notif_id = HashFnv1a("installing packages notification");
-    bool user_input_needed = false;
+    package::InstallJob* job_awaiting_user_input = nullptr;
     bool license_key_needed = false;
     if (!package_install_jobs.Empty()) {
         if (notifications.AddOrUpdate(
@@ -889,20 +1028,8 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                                 .action_taken = package::TypeOfActionTaken(component),
                                 .installed = component.installed_path.size != 0,
                             };
-                            switch (component.component.type) {
-                                case package::ComponentType::Library:
-                                    dyn::AssignFitInCapacity(result.name,
-                                                             fmt::Format(builder.arena,
-                                                                         "{} - Sample Library",
-                                                                         component.component.library->name));
-                                    break;
-                                case package::ComponentType::Presets:
-                                    dyn::AssignFitInCapacity(
-                                        result.name,
-                                        path::FilenameWithoutExtension(component.component.path));
-                                    break;
-                                case package::ComponentType::Count: PanicIfReached();
-                            }
+                            dyn::AssignFitInCapacity(result.name,
+                                                     ComponentDisplayName(component, builder.arena));
                             dyn::Append(record.components, result);
                         }
                         dyn::AssignFitInCapacity(record.license_email, job.job->license_email);
@@ -944,20 +1071,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                 }
 
                 case package::InstallJob::State::AwaitingUserInput: {
-                    bool all_descisions_made = true;
-                    for (auto& component : job.job->components) {
-                        if (package::UserInputIsRequired(component.existing_installation_status) &&
-                            component.user_decision == package::InstallJob::UserDecision::Unknown) {
-                            all_descisions_made = false;
-                            break;
-                        }
-                    }
-
-                    if (all_descisions_made)
-                        package::OnAllUserInputReceived(*job.job, thread_pool);
-                    else
-                        user_input_needed = true;
-
+                    if (!job_awaiting_user_input) job_awaiting_user_input = job.job;
                     break;
                 }
             }
@@ -997,23 +1111,26 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
                           });
         }
 
-        if (user_input_needed) {
-            DoBoxViewport(
-                builder,
-                {
-                    .run = [&package_install_jobs](
-                               GuiBuilder& b) { PackageInstallAlertsPanel(b, package_install_jobs); },
-                    .bounds = CentredModalRect(f32x2 {400, 300}),
-                    .imgui_id = builder.imgui.MakeId("install alerts"),
-                    .viewport_config = ({
-                        auto cfg = k_default_modal_viewport;
-                        cfg.mode = imgui::ViewportMode::Floating;
-                        cfg.exclusive_focus = true;
-                        cfg.z_order = 200;
-                        cfg;
-                    }),
-                    .debug_name = "pkg-user-input-dialog",
-                });
+        if (job_awaiting_user_input && !license_key_needed) {
+            DoBoxViewport(builder,
+                          {
+                              .run =
+                                  [job_awaiting_user_input, &thread_pool](GuiBuilder& b) {
+                                      PackageInstallConflictPanel(b, *job_awaiting_user_input, thread_pool);
+                                  },
+                              .bounds = Rect {},
+                              .imgui_id = builder.imgui.MakeId("install conflict"),
+                              .viewport_config = ({
+                                  auto cfg = k_default_modal_viewport;
+                                  cfg.mode = imgui::ViewportMode::Floating;
+                                  cfg.positioning = imgui::ViewportPositioning::WindowCentred;
+                                  cfg.auto_size = true;
+                                  cfg.exclusive_focus = true;
+                                  cfg.z_order = 200;
+                                  cfg;
+                              }),
+                              .debug_name = "pkg-user-input-dialog",
+                          });
         }
     } else {
         notifications.Remove(k_installing_packages_notif_id);
@@ -1023,7 +1140,7 @@ PUBLIC void DoPackageInstallNotifications(GuiBuilder& builder,
     // Never show this at the same time as the license or file-conflict dialogs: they're all
     // exclusive-focus viewports at the same z-order, so two at once fight over focus and can
     // deadlock the whole GUI.
-    if (panel_state.successful_installs.size && !license_key_needed && !user_input_needed) {
+    if (panel_state.successful_installs.size && !license_key_needed && !job_awaiting_user_input) {
         DoBoxViewport(
             builder,
             {

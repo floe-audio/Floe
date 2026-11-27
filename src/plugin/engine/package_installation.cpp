@@ -36,7 +36,16 @@ CustomValueToString(Writer writer, package::InstallJob::State state, FormatOptio
 namespace package {
 
 bool32 UserInputIsRequired(ExistingInstalledComponent status) {
-    return status.installed && status.modified_since_installed != ModifiedSinceInstalled::Unmodified;
+    return status.installed && status.modified_since_installed != ModifiedSinceInstalled::Unmodified &&
+           !NoInstallationRequired(status);
+}
+
+InstallJob::UserDecision DefaultUserDecision(InstallJob::Component const& component) {
+    ASSERT(UserInputIsRequired(component.existing_installation_status));
+    if (component.install_config.allow_overwrite &&
+        component.existing_installation_status.version_difference == VersionDifference::InstalledIsOlder)
+        return InstallJob::UserDecision::Overwrite;
+    return InstallJob::UserDecision::Skip;
 }
 
 bool32 NoInstallationRequired(ExistingInstalledComponent status) {
@@ -843,13 +852,15 @@ static InstallJob::State DoJobPhase1Impl(InstallJob& job) {
 
         if (UserInputIsRequired(existing_check)) user_input_needed = true;
 
-        PLACEMENT_NEW(job.components.PrependUninitialised(job.arena))
-        InstallJob::Component {
-            .component = *component,
-            .existing_installation_status = existing_check,
-            .user_decision = InstallJob::UserDecision::Unknown,
-            .install_config = install_config,
-        };
+        auto& job_component =
+            *PLACEMENT_NEW(job.components.PrependUninitialised(job.arena)) InstallJob::Component {
+                .component = *component,
+                .existing_installation_status = existing_check,
+                .user_decision = InstallJob::UserDecision::Unknown,
+                .install_config = install_config,
+            };
+        if (UserInputIsRequired(existing_check))
+            job_component.user_decision = DefaultUserDecision(job_component);
     }
 
     if (num_components == k_max_components) {
@@ -1169,7 +1180,7 @@ String TypeOfActionTaken(ExistingInstalledComponent existing_installation_status
                 if (existing_installation_status.version_difference == VersionDifference::InstalledIsOlder)
                     return "updated";
                 else
-                    return "overwritten";
+                    return "replaced";
             }
             case InstallJob::UserDecision::InstallCopy: return "installed as copy";
             case InstallJob::UserDecision::Skip: return "skipped";
@@ -2091,7 +2102,7 @@ TEST_CASE(TestPackageInstallation) {
                      .version_difference = VersionDifference::Equal,
                      .modified_since_installed = ModifiedSinceInstalled::Modified,
                  },
-                 .expected_library_action = "overwritten"_s,
+                 .expected_library_action = "replaced"_s,
                  .library_user_decision = InstallJob::UserDecision::Overwrite,
 
                  // In our previous 'skip' case, the presets we reinstalled. They would be put in a
@@ -2130,7 +2141,7 @@ TEST_CASE(TestPackageInstallation) {
                      .version_difference = VersionDifference::Equal,
                      .modified_since_installed = ModifiedSinceInstalled::Modified,
                  },
-                 .expected_library_action = "overwritten"_s,
+                 .expected_library_action = "replaced"_s,
                  .library_user_decision = InstallJob::UserDecision::Overwrite,
 
                  // In our previous 'skip' case, the presets we reinstalled. They would be put in a
@@ -2255,6 +2266,47 @@ TEST_CASE(TestTypeOfActionTaken) {
                 }
             }
         }
+    }
+
+    return k_success;
+}
+
+TEST_CASE(TestUserInputIsRequired) {
+    SUBCASE("no question when nothing would be installed anyway") {
+        for (auto const version_difference :
+             Array {VersionDifference::Equal, VersionDifference::InstalledIsNewer})
+            CHECK(!UserInputIsRequired({
+                .installed = true,
+                .version_difference = version_difference,
+                .modified_since_installed = ModifiedSinceInstalled::UnmodifiedButFilesAdded,
+            }));
+    }
+
+    SUBCASE("question when an update would discard added files") {
+        CHECK(UserInputIsRequired({
+            .installed = true,
+            .version_difference = VersionDifference::InstalledIsOlder,
+            .modified_since_installed = ModifiedSinceInstalled::UnmodifiedButFilesAdded,
+        }));
+    }
+
+    SUBCASE("default decision") {
+        InstallJob::Component component {
+            .existing_installation_status {
+                .installed = true,
+                .version_difference = VersionDifference::InstalledIsOlder,
+                .modified_since_installed = ModifiedSinceInstalled::Modified,
+            },
+            .install_config {.allow_overwrite = true},
+        };
+        CHECK_EQ(DefaultUserDecision(component), InstallJob::UserDecision::Overwrite);
+
+        component.install_config.allow_overwrite = false;
+        CHECK_EQ(DefaultUserDecision(component), InstallJob::UserDecision::Skip);
+
+        component.install_config.allow_overwrite = true;
+        component.existing_installation_status.version_difference = VersionDifference::Equal;
+        CHECK_EQ(DefaultUserDecision(component), InstallJob::UserDecision::Skip);
     }
 
     return k_success;
@@ -2541,6 +2593,7 @@ TEST_REGISTRATION(RegisterPackageInstallationTests) {
     REGISTER_TEST(package::TestMacosFileLocationCategory);
     REGISTER_TEST(package::TestPackageInstallation);
     REGISTER_TEST(package::TestTypeOfActionTaken);
+    REGISTER_TEST(package::TestUserInputIsRequired);
     REGISTER_TEST(package::TestParseFilenameWithSuffix);
     REGISTER_TEST(package::TestWriteFilenameWithSuffix);
     REGISTER_TEST(package::TestFindNextNonExistentFilename);

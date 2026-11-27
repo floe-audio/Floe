@@ -141,6 +141,10 @@ void DoJobPhase1(InstallJob& job);
 // [worker thread (probably)]
 void DoJobPhase2(InstallJob& job);
 
+// The decision to start from when asking the user about a component.
+// [threadsafe]
+InstallJob::UserDecision DefaultUserDecision(InstallJob::Component const& component);
+
 // Complete a job that was started but needed user input.
 // [main thread]
 void OnAllUserInputReceived(InstallJob& job, ThreadPool& thread_pool);
