@@ -516,15 +516,64 @@ static bool MirageIsInstalled() {
     return false;
 }
 
+// Roughly where a file is, without revealing the user's name or folder structure.
+static String MacosFileLocationCategory(String path) {
+    if (StartsWithSpan(path, "/Volumes/"_s)) return "external-volume"_s;
+
+    constexpr auto k_users_prefix = "/Users/"_s;
+    if (!StartsWithSpan(path, k_users_prefix)) return "outside-home"_s;
+    auto const after_users = path.SubSpan(k_users_prefix.size);
+    auto const username_size = Find(after_users, '/');
+    if (!username_size) return "outside-home"_s;
+    auto const within_home = after_users.SubSpan(*username_size + 1);
+
+    struct Location {
+        String prefix;
+        String category;
+    };
+    static constexpr auto k_locations = ArrayT<Location>({
+        {"Downloads/"_s, "downloads"_s},
+        {"Desktop/"_s, "desktop"_s},
+        {"Documents/"_s, "documents"_s},
+        {"Music/"_s, "music"_s},
+        {"Library/Mobile Documents/"_s, "icloud-drive"_s},
+        {"Library/CloudStorage/"_s, "cloud-storage"_s},
+    });
+    for (auto const& location : k_locations)
+        if (StartsWithSpan(within_home, location.prefix)) return location.category;
+
+    return "home-other"_s;
+}
+
+static void HandleMacosPackageFileOpenError(InstallJob& job, ErrorCode error) {
+    String cause {};
+    if (error == FilesystemError::NotPermittedBySystem) {
+        cause = "EPERM"_s;
+        dyn::AppendSpan(job.error_buffer,
+                        "macOS is stopping your DAW from opening files in this folder. Move the file to the "
+                        "Music folder in your home folder, then try again.\n"_s);
+    } else if (error == FilesystemError::AccessDenied) {
+        cause = "EACCES"_s;
+        dyn::AppendSpan(job.error_buffer,
+                        "Your Mac user account isn't allowed to open this file. Try downloading it "
+                        "again.\n"_s);
+    } else {
+        return;
+    }
+
+    auto const binary_path = CurrentBinaryPath(job.arena);
+    ReportError(ErrorLevel::Warning,
+                SourceLocationHash() + (u64)error.code,
+                "macOS blocked opening a picked package file: {}, location: {}, process: {}",
+                cause,
+                MacosFileLocationCategory(job.path),
+                binary_path.HasValue() ? path::Filename(binary_path.Value()) : "unknown"_s);
+}
+
 static InstallJob::State OpenPackageFile(InstallJob& job) {
     job.file_reader = TRY_OR(Reader::FromFile(job.path), {
         fmt::Append(job.error_buffer, "Couldn't read file: {u}\n", error);
-        if constexpr (IS_MACOS) {
-            if (error == FilesystemError::AccessDenied)
-                dyn::AppendSpan(job.error_buffer,
-                                "macOS may be blocking your DAW from this folder. Try moving the file to the "
-                                "Music folder in your home folder.\n"_s);
-        }
+        if constexpr (IS_MACOS) HandleMacosPackageFileOpenError(job, error);
         return InstallJob::State::DoneError;
     });
 
@@ -850,7 +899,9 @@ static InstallJob::State DoJobPhase2Impl(InstallJob& job) {
                 ReaderInstallComponent(*job.reader, component.component, component.install_config, job.arena);
 
             auto const default_folder = job.install_folders[ToInt(component.component.type)];
-            if (install_outcome.HasError() && install_outcome.Error() == FilesystemError::AccessDenied &&
+            if (install_outcome.HasError() &&
+                (install_outcome.Error() == FilesystemError::AccessDenied ||
+                 install_outcome.Error() == FilesystemError::NotPermittedBySystem) &&
                 !path::Equal(component.install_config.folder, default_folder)) {
                 // We were probably trying to update an existing installation in-place in a folder we don't
                 // have permission to write to - such as Mirage's old admin-created libraries folder. Install
@@ -1904,6 +1955,23 @@ TEST_CASE(TestPackageInstallationExtraFiles) {
     return k_success;
 }
 
+TEST_CASE(TestMacosFileLocationCategory) {
+    CHECK_EQ(MacosFileLocationCategory("/Users/name/Downloads/pack.floe-pkg"_s), "downloads"_s);
+    CHECK_EQ(MacosFileLocationCategory("/Users/name/Desktop/folder/pack.zip"_s), "desktop"_s);
+    CHECK_EQ(MacosFileLocationCategory("/Users/name/Documents/pack.zip"_s), "documents"_s);
+    CHECK_EQ(MacosFileLocationCategory("/Users/name/Music/pack.zip"_s), "music"_s);
+    CHECK_EQ(MacosFileLocationCategory("/Users/name/Library/Mobile Documents/com~apple~CloudDocs/pack.zip"_s),
+             "icloud-drive"_s);
+    CHECK_EQ(MacosFileLocationCategory("/Users/name/Library/CloudStorage/Dropbox/pack.zip"_s),
+             "cloud-storage"_s);
+    CHECK_EQ(MacosFileLocationCategory("/Users/name/Samples/pack.zip"_s), "home-other"_s);
+    CHECK_EQ(MacosFileLocationCategory("/Users/name/pack.zip"_s), "home-other"_s);
+    CHECK_EQ(MacosFileLocationCategory("/Volumes/Drive/pack.zip"_s), "external-volume"_s);
+    CHECK_EQ(MacosFileLocationCategory("/Users/pack.zip"_s), "outside-home"_s);
+    CHECK_EQ(MacosFileLocationCategory("/tmp/pack.zip"_s), "outside-home"_s);
+    return k_success;
+}
+
 TEST_CASE(TestPackageInstallation) {
     auto const destination_folder = tests::TempFolderUnique(tester);
 
@@ -2470,6 +2538,7 @@ TEST_CASE(TestEncryptedPackageInstallation) {
 
 TEST_REGISTRATION(RegisterPackageInstallationTests) {
     REGISTER_TEST(package::TestPackageInstallationExtraFiles);
+    REGISTER_TEST(package::TestMacosFileLocationCategory);
     REGISTER_TEST(package::TestPackageInstallation);
     REGISTER_TEST(package::TestTypeOfActionTaken);
     REGISTER_TEST(package::TestParseFilenameWithSuffix);

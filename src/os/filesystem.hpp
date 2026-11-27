@@ -21,6 +21,7 @@ enum class FilesystemError : u8 {
     DiskFull,
     DifferentFilesystems,
     NotEmpty,
+    NotPermittedBySystem,
     Count,
 };
 

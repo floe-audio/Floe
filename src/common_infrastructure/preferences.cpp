@@ -944,6 +944,7 @@ Optional<usize> Init(Preferences& prefs, Span<String const> possible_paths) {
     for (auto const [index, path] : Enumerate(possible_paths)) {
         auto const read_result = TRY_OR(ReadEntirePreferencesFile(path, prefs.arena), {
             if (error == FilesystemError::PathDoesNotExist || error == FilesystemError::AccessDenied ||
+                error == FilesystemError::NotPermittedBySystem ||
                 error == FilesystemError::UsedByAnotherProcess)
                 continue;
             LogWarning(ModuleName::Preferences, "failed to read preferences file: {}", error);

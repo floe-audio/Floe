@@ -33,6 +33,8 @@ static constexpr ErrorCodeCategory k_fp_error_category {
                 case FilesystemError::NotSupported: return "not supported";
                 case FilesystemError::DifferentFilesystems: return "paths are on different filesystems";
                 case FilesystemError::NotEmpty: return "folder is not empty";
+                case FilesystemError::NotPermittedBySystem:
+                    return "the system is blocking access to this file or folder";
                 case FilesystemError::Count: break;
             }
             return "";
@@ -49,14 +51,10 @@ static constexpr Optional<FilesystemError> TranslateErrnoCode(s64 ec) {
         case EEXIST: return FilesystemError::PathAlreadyExists;
         case ENFILE: return FilesystemError::TooManyFilesOpen;
         case EROFS: // read-only
-        case EACCES:
-        case EPERM: {
-            // POSIX defines EACCES as "an attempt was made to access a file in a way forbidden by its file
-            // access permissions" and EPERM as "an attempt was made to perform an operation limited to
-            // processes with appropriate privileges or to the owner of a file or other resource". These are
-            // so similar that I think we will just consider them the same.
-            return FilesystemError::AccessDenied;
-        }
+        case EACCES: return FilesystemError::AccessDenied;
+        // EACCES is about file permissions. EPERM is the OS refusing the operation regardless of file
+        // permissions; on macOS it's what the sandbox and privacy protections (TCC) return.
+        case EPERM: return FilesystemError::NotPermittedBySystem;
         case EBUSY: return FilesystemError::FilesystemBusy;
 #ifdef EDQUOT
         case EDQUOT: return FilesystemError::DiskFull;
